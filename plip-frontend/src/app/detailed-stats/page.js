@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { apiClient, pythonApiClient, llmApiClient, agentApiClient, langGraphApiClient, overviewInsightsApiClient, aiBundleApiClient } from '@/utils/api';
+import { apiClient, pythonApiClient, agentApiClient, langGraphApiClient, overviewInsightsApiClient, aiBundleApiClient } from '@/utils/api';
 import { gangnamDongs } from '@/data/gangnamDongs';
 import Image from 'next/image';
 import {
@@ -17,6 +17,46 @@ import * as d3 from 'd3';
 
 // 색상 팔레트
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4'];
+
+// 커스텀 파이 차트 라벨 컴포넌트
+const CustomPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, name, value }) => {
+  const RADIAN = Math.PI / 180;
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+  return (
+    <text 
+      x={x} 
+      y={y} 
+      fill="white" 
+      textAnchor={x > cx ? 'start' : 'end'} 
+      dominantBaseline="central"
+      fontSize="12"
+      fontWeight="bold"
+    >
+      {`${(percent * 100).toFixed(1)}%`}
+    </text>
+  );
+};
+
+// 커스텀 바 차트 라벨 컴포넌트
+const CustomBarLabel = ({ x, y, width, height, value, total }) => {
+  const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+  return (
+    <text 
+      x={x + width / 2} 
+      y={y - 5} 
+      fill="#374151" 
+      textAnchor="middle" 
+      dominantBaseline="bottom"
+      fontSize="11"
+      fontWeight="500"
+    >
+      {`${percentage}%`}
+    </text>
+  );
+};
 
 export default function DetailedStatsPage() {
   const router = useRouter();
@@ -34,7 +74,6 @@ export default function DetailedStatsPage() {
   
   // 데이터 상태
   const [dailyData, setDailyData] = useState([]);
-  const [timeBasedData, setTimeBasedData] = useState([]);
   const [genderAgeStats, setGenderAgeStats] = useState(null);
   const [weekdayWeekendStats, setWeekdayWeekendStats] = useState(null);
   const [dayNightStats, setDayNightStats] = useState(null);
@@ -47,10 +86,7 @@ export default function DetailedStatsPage() {
   const [predictionLoading, setPredictionLoading] = useState(false);
   const [modelTrained, setModelTrained] = useState(false);
 
-  // LLM 분석 상태
-  const [llmAnalysis, setLlmAnalysis] = useState(null);
-  const [llmLoading, setLlmLoading] = useState(false);
-  const [llmError, setLlmError] = useState(null);
+
 
   // AI Agent 분석 상태
   const [agentAnalysis, setAgentAnalysis] = useState(null);
@@ -102,14 +138,12 @@ export default function DetailedStatsPage() {
 
       const [
         dailyResponse,
-        timeBasedResponse,
         genderAgeResponse,
         weekdayWeekendResponse,
         dayNightResponse,
         genderTimeResponse
       ] = await Promise.allSettled([
         apiClient.getDailyPopulation(selectedDong),
-        apiClient.getTimeBasedPopulation(selectedDong),
         apiClient.getGenderAgeStats(selectedDong),
         apiClient.getWeekdayWeekendStats(selectedDong),
         apiClient.getDayNightStats(selectedDong),
@@ -120,11 +154,9 @@ export default function DetailedStatsPage() {
       if (dailyResponse.status === 'fulfilled') {
         const dailyData = dailyResponse.value?.dailyDataList || [];
         setDailyData(dailyData);
-      }
-      
-      if (timeBasedResponse.status === 'fulfilled') {
-        const timeData = timeBasedResponse.value?.timeDataList || [];
-        setTimeBasedData(timeData);
+        console.log('일별 데이터 로드 성공:', dailyData.length, '개');
+      } else {
+        console.error('일별 데이터 로드 실패:', dailyResponse.reason);
       }
       
       if (genderAgeResponse.status === 'fulfilled') {
@@ -137,18 +169,30 @@ export default function DetailedStatsPage() {
           genderAgeData.femalePopulation = Object.values(genderAgeData.femaleAgeGroup).reduce((sum, val) => sum + (val || 0), 0);
         }
         setGenderAgeStats(genderAgeData);
+        console.log('성별/연령별 데이터 로드 성공:', genderAgeData);
+      } else {
+        console.error('성별/연령별 데이터 로드 실패:', genderAgeResponse.reason);
       }
       
       if (weekdayWeekendResponse.status === 'fulfilled') {
         setWeekdayWeekendStats(weekdayWeekendResponse.value);
+        console.log('주중/주말 데이터 로드 성공:', weekdayWeekendResponse.value);
+      } else {
+        console.error('주중/주말 데이터 로드 실패:', weekdayWeekendResponse.reason);
       }
       
       if (dayNightResponse.status === 'fulfilled') {
         setDayNightStats(dayNightResponse.value);
+        console.log('주야간 데이터 로드 성공:', dayNightResponse.value);
+      } else {
+        console.error('주야간 데이터 로드 실패:', dayNightResponse.reason);
       }
 
       if (genderTimeResponse.status === 'fulfilled') {
         setGenderTimeStats(genderTimeResponse.value);
+        console.log('성별 시간대 데이터 로드 성공:', genderTimeResponse.value);
+      } else {
+        console.error('성별 시간대 데이터 로드 실패:', genderTimeResponse.reason);
       }
 
     } catch (err) {
@@ -159,97 +203,80 @@ export default function DetailedStatsPage() {
     }
   };
 
-  // 필터링된 데이터 계산
-  const getFilteredData = () => {
-    let data = [...timeBasedData];
-    
-    // 성별 필터링
-    if (selectedGender !== 'all') {
-      // 성별 필터링 로직 구현
-    }
-    
-    // 연령대 필터링
-    if (selectedAgeGroup !== 'all') {
-      // 연령대 필터링 로직 구현
-    }
-    
-    // 시간대 필터링
-    if (selectedTimeType === 'morning') {
-      data = data.filter(item => item.timeRange?.includes('오전') || item.timeRange?.includes('06') || item.timeRange?.includes('12'));
-    } else if (selectedTimeType === 'afternoon') {
-      data = data.filter(item => item.timeRange?.includes('오후') || item.timeRange?.includes('12') || item.timeRange?.includes('18'));
-    } else if (selectedTimeType === 'evening') {
-      data = data.filter(item => item.timeRange?.includes('저녁') || item.timeRange?.includes('18') || item.timeRange?.includes('24'));
-    }
-    
-    return data;
-  };
+
 
   // 차트 데이터 변환 함수들
-     const getTimeBasedChartData = () => {
-     const filteredData = getFilteredData();
-     if (!filteredData || filteredData.length === 0) {
-       console.log('필터링된 데이터가 없습니다.');
-       return [];
-     }
-     
-     console.log('필터링된 데이터:', filteredData);
-     
-     // 시간대별로 데이터 그룹화하고 평균 계산
-     const timeGroups = {};
-     
-     filteredData.forEach(item => {
-       const timeRange = item?.timeRange || '시간대 없음';
-       const total = Number(item?.totalPopulation) || 0;
-       const local = Number(item?.localPopulation) || 0;
-       const longForeigner = Number(item?.longForeignerPopulation) || 0;
-       const tempForeigner = Number(item?.tempForeignerPopulation) || 0;
-       
-       if (!timeGroups[timeRange]) {
-         timeGroups[timeRange] = {
-           totalSum: 0,
-           localSum: 0,
-           longForeignerSum: 0,
-           tempForeignerSum: 0,
-           count: 0
-         };
-       }
-       
-       timeGroups[timeRange].totalSum += total;
-       timeGroups[timeRange].localSum += local;
-       timeGroups[timeRange].longForeignerSum += longForeigner;
-       timeGroups[timeRange].tempForeignerSum += tempForeigner;
-       timeGroups[timeRange].count += 1;
-     });
-     
-     // 평균 계산하여 차트 데이터 생성
-     const chartData = Object.keys(timeGroups).map(timeRange => {
-       const group = timeGroups[timeRange];
-       const avgTotal = Math.round(group.totalSum / group.count);
-       const avgLocal = Math.round(group.localSum / group.count);
-       const avgLongForeigner = Math.round(group.longForeignerSum / group.count);
-       const avgTempForeigner = Math.round(group.tempForeignerSum / group.count);
-       
-       return {
-         time: timeRange,
-         total: avgTotal,
-         local: avgLocal,
-         longForeigner: avgLongForeigner,
-         tempForeigner: avgTempForeigner,
-         others: Math.max(avgTotal - avgLocal, 0)
-       };
-     });
-     
-     // 시간 순서대로 정렬
-     chartData.sort((a, b) => {
-       const timeA = a.time.split(':')[0];
-       const timeB = b.time.split(':')[0];
-       return parseInt(timeA) - parseInt(timeB);
-     });
-     
-     console.log('시간대별 평균 차트 데이터:', chartData);
-     return chartData;
-   };
+  const getTimeBasedChartData = () => {
+    if (!dailyData || dailyData.length === 0) {
+      console.log('일별 데이터가 없습니다.');
+      return [];
+    }
+    
+    console.log('일별 데이터:', dailyData);
+    console.log('시간대별 분포:', dailyData.reduce((acc, item) => {
+      const timeRange = item?.timeRange || '시간대 없음';
+      acc[timeRange] = (acc[timeRange] || 0) + 1;
+      return acc;
+    }, {}));
+    
+    // 시간대별로 데이터 그룹화하고 평균 계산
+    const timeGroups = {};
+    
+    dailyData.forEach(item => {
+      const timeRange = item?.timeRange || '시간대 없음';
+      const total = parseFloat(item?.totalPopulation || item?.total || 0);
+      const local = parseFloat(item?.localPopulation || item?.local || 0);
+      const longForeigner = parseFloat(item?.longForeignerPopulation || item?.longForeigner || 0);
+      const tempForeigner = parseFloat(item?.tempForeignerPopulation || item?.tempForeigner || 0);
+      
+      if (!timeGroups[timeRange]) {
+        timeGroups[timeRange] = {
+          totalSum: 0,
+          localSum: 0,
+          longForeignerSum: 0,
+          tempForeignerSum: 0,
+          count: 0
+        };
+      }
+      
+      timeGroups[timeRange].totalSum += total;
+      timeGroups[timeRange].localSum += local;
+      timeGroups[timeRange].longForeignerSum += longForeigner;
+      timeGroups[timeRange].tempForeignerSum += tempForeigner;
+      timeGroups[timeRange].count += 1;
+    });
+    
+    // 평균 계산하여 차트 데이터 생성
+    const chartData = Object.keys(timeGroups).map(timeRange => {
+      const group = timeGroups[timeRange];
+      const avgTotal = Math.round(group.totalSum / group.count);
+      const avgLocal = Math.round(group.localSum / group.count);
+      const avgLongForeigner = Math.round(group.longForeignerSum / group.count);
+      const avgTempForeigner = Math.round(group.tempForeignerSum / group.count);
+      
+      return {
+        time: timeRange,
+        total: avgTotal,
+        local: avgLocal,
+        longForeigner: avgLongForeigner,
+        tempForeigner: avgTempForeigner,
+        others: Math.max(avgTotal - avgLocal, 0)
+      };
+    });
+    
+    // 시간 순서대로 정렬 (더 정확한 정렬)
+    chartData.sort((a, b) => {
+      // "HH:MM-HH:MM" 형식에서 시작 시간 추출
+      const timeA = parseInt(a.time.split('-')[0].split(':')[0]);
+      const timeB = parseInt(b.time.split('-')[0].split(':')[0]);
+      return timeA - timeB;
+    });
+    
+    console.log('시간대별 평균 차트 데이터:', chartData);
+    return chartData;
+  };
+
+
 
   // X축 시간 라벨 축약 (예: "17:00-18:00" -> "17")
   const formatTimeTick = (label) => {
@@ -259,263 +286,122 @@ export default function DetailedStatsPage() {
     return match ? match[1] : str;
   };
 
-  // D3.js 커스텀 선 그래프 컴포넌트
-  const D3LineChart = ({ data, width, height }) => {
-    const svgRef = useRef();
-    const tooltipRef = useRef();
-
-    useEffect(() => {
-      if (!data || data.length === 0) return;
-
-      // Chart dimensions and margins
-      const margin = { top: 20, right: 30, bottom: 80, left: 80 };
-      const innerWidth = width - margin.left - margin.right;
-      const innerHeight = height - margin.top - margin.bottom;
-
-      // Select and clear the SVG
-      const svg = d3.select(svgRef.current)
-        .attr('width', width)
-        .attr('height', height);
-      svg.selectAll('*').remove();
-
-      const g = svg.append('g')
-        .attr('transform', `translate(${margin.left},${margin.top})`);
-
-      // X-axis scale (time)
-      const x = d3.scalePoint()
-        .domain(data.map(d => d.time))
-        .range([0, innerWidth])
-        .padding(0.1);
-
-      // Y-axis scale (population)
-      const y = d3.scaleLinear()
-        .domain([0, d3.max(data, d => Math.max(d.total, d.local, d.longForeigner, d.tempForeigner))]).nice()
-        .range([innerHeight, 0]);
-
-      // Line generators
-      const localLine = d3.line()
-        .x(d => x(d.time))
-        .y(d => y(d.local))
-        .curve(d3.curveMonotoneX);
-
-      const totalLine = d3.line()
-        .x(d => x(d.time))
-        .y(d => y(d.total))
-        .curve(d3.curveMonotoneX);
-
-      const longForeignerLine = d3.line()
-        .x(d => x(d.time))
-        .y(d => y(d.longForeigner))
-        .curve(d3.curveMonotoneX);
-
-      const tempForeignerLine = d3.line()
-        .x(d => x(d.time))
-        .y(d => y(d.tempForeigner))
-        .curve(d3.curveMonotoneX);
-
-      // Draw X axis
-      g.append('g')
-        .attr('transform', `translate(0,${innerHeight})`)
-        .call(d3.axisBottom(x).tickFormat(formatTimeTick))
-        .selectAll('text')
-        .style('text-anchor', 'end')
-        .attr('dx', '-.8em')
-        .attr('dy', '.15em')
-        .attr('transform', 'rotate(-45)')
-        .style('font-size', '11px')
-        .style('fill', '#666');
-
-      // Draw Y axis
-      g.append('g')
-        .call(d3.axisLeft(y).ticks(8).tickFormat(d => d.toLocaleString()))
-        .style('font-size', '11px')
-        .style('fill', '#666');
-
-      // Y축 라벨
-      g.append('text')
-        .attr('transform', 'rotate(-90)')
-        .attr('y', 0 - margin.left)
-        .attr('x', 0 - (innerHeight / 2))
-        .attr('dy', '1em')
-        .style('text-anchor', 'middle')
-        .style('font-size', '12px')
-        .style('fill', '#333')
-        .text('인구 수 (명)');
-
-      // Draw 'total' population line (가장 굵게)
-      g.append('path')
-        .datum(data)
-        .attr('fill', 'none')
-        .attr('stroke', '#2563EB')
-        .attr('stroke-width', 4)
-        .attr('d', totalLine);
-
-      // Draw 'local' population line
-      g.append('path')
-        .datum(data)
-        .attr('fill', 'none')
-        .attr('stroke', '#60A5FA')
-        .attr('stroke-width', 3)
-        .attr('d', localLine);
-
-      // Draw 'long foreigner' population line
-      g.append('path')
-        .datum(data)
-        .attr('fill', 'none')
-        .attr('stroke', '#10B981')
-        .attr('stroke-width', 2.5)
-        .attr('d', longForeignerLine);
-
-      // Draw 'temp foreigner' population line
-      g.append('path')
-        .datum(data)
-        .attr('fill', 'none')
-        .attr('stroke', '#F59E0B')
-        .attr('stroke-width', 2.5)
-        .attr('d', tempForeignerLine);
-
-      // Add dots for total population
-      g.selectAll('.dot-total')
-        .data(data)
-        .enter().append('circle')
-        .attr('class', 'dot-total')
-        .attr('cx', d => x(d.time))
-        .attr('cy', d => y(d.total))
-        .attr('r', 5)
-        .attr('fill', '#2563EB')
-        .attr('stroke', '#1D4ED8')
-        .attr('stroke-width', 2);
-
-      // Add dots for local population
-      g.selectAll('.dot-local')
-        .data(data)
-        .enter().append('circle')
-        .attr('class', 'dot-local')
-        .attr('cx', d => x(d.time))
-        .attr('cy', d => y(d.local))
-        .attr('r', 4)
-        .attr('fill', '#60A5FA')
-        .attr('stroke', '#0284C7')
-        .attr('stroke-width', 2);
-
-      // Add dots for long foreigner population
-      g.selectAll('.dot-long-foreigner')
-        .data(data)
-        .enter().append('circle')
-        .attr('class', 'dot-long-foreigner')
-        .attr('cx', d => x(d.time))
-        .attr('cy', d => y(d.longForeigner))
-        .attr('r', 3.5)
-        .attr('fill', '#10B981')
-        .attr('stroke', '#059669')
-        .attr('stroke-width', 2);
-
-      // Add dots for temp foreigner population
-      g.selectAll('.dot-temp-foreigner')
-        .data(data)
-        .enter().append('circle')
-        .attr('class', 'dot-temp-foreigner')
-        .attr('cx', d => x(d.time))
-        .attr('cy', d => y(d.tempForeigner))
-        .attr('r', 3.5)
-        .attr('fill', '#F59E0B')
-        .attr('stroke', '#D97706')
-        .attr('stroke-width', 2);
-      
-      // Add tooltip
-      const tooltip = d3.select('body').append('div')
-        .attr('class', 'd3-line-tooltip')
-        .style('opacity', 0)
-        .style('position', 'absolute')
-        .style('background-color', 'rgba(0, 0, 0, 0.8)')
-        .style('color', 'white')
-        .style('border', '1px solid #ddd')
-        .style('padding', '8px 12px')
-        .style('border-radius', '4px')
-        .style('box-shadow', '0 2px 4px rgba(0,0,0,0.1)')
-        .style('pointer-events', 'none')
-        .style('font-size', '12px')
-        .style('z-index', '1000');
-
-      // Add mouse interaction for tooltip
-      const bisect = d3.bisector(d => d.time).left;
-      
-      g.append('rect')
-        .attr('width', innerWidth)
-        .attr('height', innerHeight)
-        .attr('fill', 'none')
-        .attr('pointer-events', 'all')
-        .on('mousemove', function(event) {
-          const [mouseX] = d3.pointer(event);
-          const xValue = x.invert ? x.invert(mouseX) : null;
-          
-          // Find closest data point
-          let closestData = null;
-          let minDistance = Infinity;
-          
-          data.forEach(d => {
-            const distance = Math.abs(x(d.time) - mouseX);
-            if (distance < minDistance) {
-              minDistance = distance;
-              closestData = d;
-            }
-          });
-
-          if (closestData) {
-            tooltip.html(`
-              <div style="font-weight: bold; margin-bottom: 6px;">${closestData.time}</div>
-              <div style="color: #000; margin-bottom: 2px;">총 인구: <strong>${closestData.total.toLocaleString()}명</strong></div>
-              <div style="color: #666; margin-bottom: 2px;">국내인구: <strong>${closestData.local.toLocaleString()}명</strong></div>
-              <div style="color: #666; margin-bottom: 2px;">장기체류 외국인: <strong>${closestData.longForeigner.toLocaleString()}명</strong></div>
-              <div style="color: #666;">단기체류 외국인: <strong>${closestData.tempForeigner.toLocaleString()}명</strong></div>
-            `)
-            .style('left', (event.pageX + 10) + 'px')
-            .style('top', (event.pageY - 20) + 'px')
-            .style('opacity', 1);
-          }
-        })
-        .on('mouseleave', function() {
-          tooltip.style('opacity', 0);
-        });
-
-      // 범례 추가
-      const legend = g.append('g')
-        .attr('transform', `translate(${innerWidth - 120}, 20)`);
-
-      const legendData = [
-        { name: '총 인구', color: '#2563EB' },
-        { name: '국내인', color: '#60A5FA' },
-        { name: '장기체류 외국인', color: '#10B981' },
-        { name: '단기체류 외국인', color: '#F59E0B' }
-      ];
-
-      const legendItems = legend.selectAll('.legend-item')
-        .data(legendData)
-        .join('g')
-        .attr('class', 'legend-item')
-        .attr('transform', (d, i) => `translate(0, ${i * 20})`);
-
-      legendItems.append('circle')
-        .attr('r', 6)
-        .attr('fill', d => d.color)
-        .attr('stroke', d => d.color === '#2563EB' ? '#1D4ED8' : '#0284C7')
-        .attr('stroke-width', 2);
-
-      legendItems.append('text')
-        .attr('x', 12)
-        .attr('y', 4)
-        .style('font-size', '12px')
-        .style('fill', '#333')
-        .text(d => d.name);
-
-      // 컴포넌트 언마운트 시 툴팁 제거
-      return () => {
-        d3.selectAll('.d3-line-tooltip').remove();
-      };
-
-    }, [data, width, height]);
-
-    return <svg ref={svgRef}></svg>;
+  // 이중 Y축 차트 컴포넌트 (Recharts 사용)
+  const DualAxisLineChart = ({ data, width, height }) => {
+    return (
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <XAxis 
+            dataKey="time" 
+            stroke="#6b7280" 
+            fontSize={12} 
+            axisLine={true} 
+            tickLine={true}
+            tickFormatter={formatTimeTick}
+          />
+                     <YAxis 
+             yAxisId="left"
+             stroke="#6b7280" 
+             fontSize={12} 
+             axisLine={true} 
+             tickLine={true}
+             tickFormatter={(value) => {
+               if (value >= 1000) {
+                 return `${(value / 1000).toFixed(1)}k`;
+               }
+               return value.toString();
+             }}
+             domain={['dataMin - 100', 'dataMax + 100']}
+           />
+           <YAxis 
+             yAxisId="right"
+             orientation="right"
+             stroke="#6b7280" 
+             fontSize={12} 
+             axisLine={true} 
+             tickLine={true}
+             tickFormatter={(value) => {
+               if (value >= 1000) {
+                 return `${(value / 1000).toFixed(1)}k`;
+               }
+               return value.toString();
+             }}
+             domain={[0, 'dataMax + 50']}
+           />
+           <Tooltip 
+             contentStyle={{
+               backgroundColor: 'white',
+               border: '1px solid #e5e7eb',
+               borderRadius: '6px',
+               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+             }}
+             formatter={(value, name) => {
+               const labels = {
+                 'total': '총 인구',
+                 'local': '내국인', 
+                 'longForeigner': '장기 외국인',
+                 'tempForeigner': '단기 외국인'
+               };
+               return [
+                 `${Math.round(value).toLocaleString()}명`, 
+                 labels[name] || name
+               ];
+             }}
+             labelFormatter={(label) => `시간: ${label}`}
+           />
+           <Legend 
+             wrapperStyle={{ paddingTop: '5px', fontSize: '15px' }}
+             iconSize={10}
+             formatter={(value) => {
+               const labels = {
+                 'total': '총 인구',
+                 'local': '내국인', 
+                 'longForeigner': '장기 외국인',
+                 'tempForeigner': '단기 외국인'
+               };
+               return labels[value] || value;
+             }}
+           />
+           <Line 
+             yAxisId="left"
+             type="monotone" 
+             dataKey="total" 
+             stroke="#000000" 
+             strokeWidth={3}
+             dot={{ fill: '#000000', strokeWidth: 2, r: 4 }}
+             activeDot={{ r: 6, stroke: '#000000', strokeWidth: 2, fill: '#ffffff' }}
+           />
+           <Line 
+             yAxisId="left"
+             type="monotone" 
+             dataKey="local" 
+             stroke="#666666" 
+             strokeWidth={2}
+             dot={{ fill: '#666666', strokeWidth: 2, r: 3 }}
+             activeDot={{ r: 5, stroke: '#666666', strokeWidth: 2, fill: '#ffffff' }}
+           />
+           <Line 
+             yAxisId="right"
+             type="monotone" 
+             dataKey="longForeigner" 
+             stroke="#999999" 
+             strokeWidth={2}
+             dot={{ fill: '#999999', strokeWidth: 2, r: 3 }}
+             activeDot={{ r: 5, stroke: '#999999', strokeWidth: 2, fill: '#ffffff' }}
+           />
+           <Line 
+             yAxisId="right"
+             type="monotone" 
+             dataKey="tempForeigner" 
+             stroke="#cccccc" 
+             strokeWidth={2}
+             dot={{ fill: '#cccccc', strokeWidth: 2, r: 3 }}
+             activeDot={{ r: 5, stroke: '#cccccc', strokeWidth: 2, fill: '#ffffff' }}
+           />
+        </LineChart>
+      </ResponsiveContainer>
+    );
   };
 
   const getGenderChartData = () => {
@@ -665,52 +551,7 @@ export default function DetailedStatsPage() {
     }
   };
 
-  // LLM 분석 실행 함수
-  const runLlmAnalysis = async () => {
-    try {
-      setLlmLoading(true);
-      setLlmError(null);
-      
-      const dongInfo = gangnamDongs.find(dong => dong.code === selectedDong);
-      const dongName = dongInfo?.name || '알 수 없는 동';
-      
-      // 현재 데이터 준비
-      const populationData = {
-        total: dailyData.length > 0 ? dailyData[0]?.total || 0 : 0,
-        local: dailyData.length > 0 ? dailyData[0]?.local || 0 : 0,
-        longForeigner: dailyData.length > 0 ? dailyData[0]?.longForeigner || 0 : 0,
-        tempForeigner: dailyData.length > 0 ? dailyData[0]?.tempForeigner || 0 : 0
-      };
-      
-      const timeStats = timeBasedData.slice(0, 6); // 처음 6개 시간대
-      
-      const genderStats = {
-        male: genderAgeStats?.male || 0,
-        female: genderAgeStats?.female || 0
-      };
-      
-      const ageStats = genderAgeStats?.maleAgeGroup || {};
-      
-      console.log('LLM 분석 시작:', dongName);
-      
-      const result = await llmApiClient.analyzePopulationInsights(
-        dongName,
-        populationData,
-        timeStats,
-        genderStats,
-        ageStats
-      );
-      
-      setLlmAnalysis(result.analysis);
-      console.log('LLM 분석 완료');
-      
-    } catch (error) {
-      console.error('LLM 분석 실패:', error);
-      setLlmError('LLM 분석에 실패했습니다. LLM 서버가 실행 중인지 확인해주세요.');
-    } finally {
-      setLlmLoading(false);
-    }
-  };
+
 
   // AI Agent 단계별 분석 실행 함수
   const runAgentAnalysis = async () => {
@@ -730,11 +571,11 @@ export default function DetailedStatsPage() {
         tempForeigner: dailyData.length > 0 ? dailyData[0]?.tempForeigner || 0 : 0
       };
       
-      const timeStats = timeBasedData.slice(0, 6); // 처음 6개 시간대
+      const timeStats = dailyData.slice(0, 6); // 처음 6개 시간대
       
       const genderStats = {
-        male: genderAgeStats?.male || 0,
-        female: genderAgeStats?.female || 0
+        male: genderAgeStats?.malePopulation || 0,
+        female: genderAgeStats?.femalePopulation || 0
       };
       
       const ageStats = genderAgeStats?.maleAgeGroup || {};
@@ -791,21 +632,21 @@ export default function DetailedStatsPage() {
         };
       }
 
-      // timeBasedData에서 시간대별 통계 추출 (새로운 DTO 구조 지원)
-      const timeStats = timeBasedData.slice(0, 12).map(item => ({
+      // dailyData에서 시간대별 통계 추출 (새로운 DailyPopulationDto 구조 지원)
+      const timeStats = dailyData.slice(0, 12).map(item => ({
         timeRange: item?.timeRange || '시간대 미정',
-        totalPopulation: parseFloat(item?.totalPopulation || 0),
-        localPopulation: parseFloat(item?.localPopulation || 0),
-        longForeignerPopulation: parseFloat(item?.longForeignerPopulation || 0),
-        tempForeignerPopulation: parseFloat(item?.tempForeignerPopulation || 0),
-        // 🔥 새로운 DTO에서 지원하는 성별 데이터도 활용 가능 (Double 타입)
+        totalPopulation: parseFloat(item?.totalPopulation || item?.total || 0),
+        localPopulation: parseFloat(item?.localPopulation || item?.local || 0),
+        longForeignerPopulation: parseFloat(item?.longForeignerPopulation || item?.longForeigner || 0),
+        tempForeignerPopulation: parseFloat(item?.tempForeignerPopulation || item?.tempForeigner || 0),
+        // 🔥 새로운 DailyPopulationDto에서 지원하는 성별 데이터도 활용 가능 (Double 타입)
         malePopulation: parseFloat(item?.malePopulation || 0),
         femalePopulation: parseFloat(item?.femalePopulation || 0)
       }));
       
       const genderStats = {
-        male: parseFloat(genderAgeStats?.male || 0),
-        female: parseFloat(genderAgeStats?.female || 0),
+        male: parseFloat(genderAgeStats?.malePopulation || 0),
+        female: parseFloat(genderAgeStats?.femalePopulation || 0),
         total: parseFloat(genderAgeStats?.total || 0)
       };
       
@@ -818,6 +659,7 @@ export default function DetailedStatsPage() {
         genderStats, 
         ageStatsCount: Array.isArray(ageStats) ? ageStats.length : Object.keys(ageStats).length 
       });
+      console.log('성별 데이터 상세:', genderStats);
       
       console.log('상세 인구 데이터:', populationData);
       console.log('시간대별 데이터 샘플:', timeStats.slice(0, 3));
@@ -868,17 +710,18 @@ export default function DetailedStatsPage() {
         };
       }
 
-      const timeStats = timeBasedData.slice(0, 12).map(item => ({
+      // 새로운 DailyPopulationDto 구조 지원
+      const timeStats = dailyData.slice(0, 12).map(item => ({
         timeRange: item?.timeRange || '시간대 미정',
-        totalPopulation: Number(item?.totalPopulation || 0),
-        localPopulation: Number(item?.localPopulation || 0),
-        longForeignerPopulation: Number(item?.longForeignerPopulation || 0),
-        tempForeignerPopulation: Number(item?.tempForeignerPopulation || 0)
+        totalPopulation: Number(item?.totalPopulation || item?.total || 0),
+        localPopulation: Number(item?.localPopulation || item?.local || 0),
+        longForeignerPopulation: Number(item?.longForeignerPopulation || item?.longForeigner || 0),
+        tempForeignerPopulation: Number(item?.tempForeignerPopulation || item?.tempForeigner || 0)
       }));
       
       const genderStats = {
-        male: Number(genderAgeStats?.male || 0),
-        female: Number(genderAgeStats?.female || 0),
+        male: Number(genderAgeStats?.malePopulation || 0),
+        female: Number(genderAgeStats?.femalePopulation || 0),
         total: Number(genderAgeStats?.total || 0)
       };
       
@@ -909,10 +752,39 @@ export default function DetailedStatsPage() {
     }
   };
 
-  // 기존 API 사용 (원래 방식 복원)
-  const runOverviewInsightsFromBundle = () => {
-    // 기존 API 사용
-    runOverviewInsights();
+  // 새로운 AI Bundle API 사용 (새로운 엔드포인트)
+  const runOverviewInsightsFromBundle = async () => {
+    try {
+      setOverviewInsightsLoading(true);
+      setOverviewInsightsError(null);
+      
+      const dongInfo = gangnamDongs.find(dong => dong.code === selectedDong);
+      const dongName = dongInfo?.name || '알 수 없는 동';
+      
+      // 새로운 AI Bundle API 호출
+      const today = new Date();
+      const dateStr = today.getFullYear().toString() + 
+                     (today.getMonth() + 1).toString().padStart(2, '0') + 
+                     today.getDate().toString().padStart(2, '0');
+      
+      console.log(`AI Bundle API 호출: /population/ai/bundle/${selectedDong}?date=${dateStr}`);
+      
+      const aiBundleData = await aiBundleApiClient.getAiBundle(selectedDong, dateStr);
+      
+      console.log('AI Bundle 데이터 수신:', aiBundleData);
+      
+      // AI Bundle 데이터를 Overview Insights Agent로 전달
+      const result = await aiBundleApiClient.generateInsightsFromBundle(aiBundleData);
+      
+      setOverviewInsights(result);
+      console.log('AI Bundle 기반 인사이트 생성 완료');
+      
+    } catch (error) {
+      console.error('AI Bundle API 오류:', error);
+      setOverviewInsightsError(`AI Bundle 인사이트 생성 오류: ${error.message}`);
+    } finally {
+      setOverviewInsightsLoading(false);
+    }
   };
 
   // Prophet 예측 차트 데이터 변환
@@ -953,7 +825,7 @@ export default function DetailedStatsPage() {
 
   // 히트맵 데이터 변환 함수 (실제 API 데이터 사용)
   const getHeatmapData = () => {
-    if (!timeBasedData || timeBasedData.length === 0) {
+    if (!dailyData || dailyData.length === 0) {
       console.log('히트맵 데이터가 없습니다.');
       return [];
     }
@@ -962,7 +834,7 @@ export default function DetailedStatsPage() {
     const heatmapData = [];
 
     // 실제 API 데이터를 기반으로 히트맵 생성
-    timeBasedData.forEach((item) => {
+    dailyData.forEach((item) => {
       if (!item?.date || !item?.timeRange) {
         console.log('날짜 또는 시간대 정보가 없습니다:', item);
         return;
@@ -1096,10 +968,6 @@ export default function DetailedStatsPage() {
                 </h1>
                 <p className="text-sm text-gray-600">Comprehensive population insights</p>
               </div>
-            </div>
-            
-            <div className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium border border-green-200">
-              Real-time data
             </div>
           </div>
         </div>
@@ -1279,6 +1147,59 @@ export default function DetailedStatsPage() {
                 </div>
               </div>
 
+              {/* 일별 데이터 섹션 */}
+              <div className="p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
+                <h3 className="text-lg font-semibold text-black mb-4">일별 인구 데이터</h3>
+                <div className="overflow-x-auto">
+                  {dailyData && dailyData.length > 0 ? (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left py-3 px-4 font-medium text-gray-900">날짜</th>
+                          <th className="text-left py-3 px-4 font-medium text-gray-900">시간대</th>
+                          <th className="text-right py-3 px-4 font-medium text-gray-900">총 인구</th>
+                          <th className="text-right py-3 px-4 font-medium text-gray-900">내국인</th>
+                          <th className="text-right py-3 px-4 font-medium text-gray-900">장기 외국인</th>
+                          <th className="text-right py-3 px-4 font-medium text-gray-900">단기 외국인</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dailyData.slice(0, 10).map((item, index) => (
+                          <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="py-3 px-4 text-gray-700">{item.date || 'N/A'}</td>
+                            <td className="py-3 px-4 text-gray-700">{item.timeRange || 'N/A'}</td>
+                            <td className="py-3 px-4 text-right text-gray-700">
+                              {parseFloat(item.totalPopulation || item.total || 0).toLocaleString()}
+                            </td>
+                            <td className="py-3 px-4 text-right text-gray-700">
+                              {parseFloat(item.localPopulation || item.local || 0).toLocaleString()}
+                            </td>
+                            <td className="py-3 px-4 text-right text-gray-700">
+                              {parseFloat(item.longForeignerPopulation || item.longForeigner || 0).toLocaleString()}
+                            </td>
+                            <td className="py-3 px-4 text-right text-gray-700">
+                              {parseFloat(item.tempForeignerPopulation || item.tempForeigner || 0).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="flex items-center justify-center h-32 text-gray-500">
+                      <div className="text-center">
+                        <p>일별 데이터가 없습니다</p>
+                        <p className="text-sm text-gray-400 mt-2">백엔드에서 일별 데이터를 확인해주세요</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {dailyData && dailyData.length > 10 && (
+                  <div className="mt-4 text-center">
+                    <p className="text-sm text-gray-500">총 {dailyData.length}개의 데이터 중 최근 10개 표시</p>
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
                   <h3 className="text-lg font-semibold text-black mb-4">24-Hour Population Flow</h3>
@@ -1300,108 +1221,15 @@ export default function DetailedStatsPage() {
                         console.log('첫 번째 데이터 항목:', timeBasedChartData[0]);
                         console.log('데이터 키들:', Object.keys(timeBasedChartData[0]));
                       }
-                      return (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={timeBasedChartData} margin={{ top: 5, right: 10, left: 50, bottom: 25 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                            <XAxis 
-                              dataKey="time" 
-                              stroke="#6b7280" 
-                              fontSize={12} 
-                              axisLine={true} 
-                              tickLine={true}
-                              tickFormatter={(value) => {
-                                // "01:00-02:00" 형식에서 "01" 추출
-                                const hour = value.split(':')[0];
-                                return hour.padStart(2, '0');
-                              }}
-                              interval={0}
-                            />
-                            <YAxis 
-                              stroke="#6b7280" 
-                              fontSize={12} 
-                              axisLine={true} 
-                              tickLine={true}
-                              tickFormatter={(value) => {
-                                if (value >= 1000) {
-                                  return `${(value / 1000).toFixed(1)}k`;
-                                }
-                                return value.toString();
-                              }}
-                              domain={['dataMin - 100', 'dataMax + 100']}
-                            />
-                            <Tooltip 
-                              contentStyle={{
-                                backgroundColor: 'white',
-                                border: '1px solid #e5e7eb',
-                                borderRadius: '6px',
-                                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                              }}
-                              formatter={(value, name) => {
-                                const labels = {
-                                  'total': '총 인구',
-                                  'local': '내국인', 
-                                  'longForeigner': '장기 외국인',
-                                  'tempForeigner': '단기 외국인'
-                                };
-                                return [
-                                  `${Math.round(value).toLocaleString()}명`, 
-                                  labels[name] || name
-                                ];
-                              }}
-                              labelFormatter={(label) => `시간: ${label}`}
-                            />
-                            <Legend 
-                              wrapperStyle={{ paddingTop: '5px', fontSize: '15px' }}
-                              iconSize={10}
-                              formatter={(value) => {
-                                const labels = {
-                                  'total': '총',
-                                  'local': '내국인', 
-                                  'longForeigner': '장기외국인',
-                                  'tempForeigner': '단기외국인'
-                                };
-                                return labels[value] || value;
-                              }}
-                            />
-                            <Line 
-                              type="monotone" 
-                              dataKey="total" 
-                              stroke="#3b82f6" 
-                              strokeWidth={3}
-                              dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
-                              activeDot={{ r: 6, fill: '#3b82f6', strokeWidth: 2 }}
-                            />
-                            <Line 
-                              type="monotone" 
-                              dataKey="local" 
-                              stroke="#10b981" 
-                              strokeWidth={2}
-                              dot={{ fill: '#10b981', strokeWidth: 2, r: 3 }}
-                              activeDot={{ r: 5, fill: '#10b981', strokeWidth: 2 }}
-                              strokeDasharray="5 5"
-                            />
-                            <Line 
-                              type="monotone" 
-                              dataKey="longForeigner" 
-                              stroke="#f59e0b" 
-                              strokeWidth={2}
-                              dot={{ fill: '#f59e0b', strokeWidth: 2, r: 3 }}
-                              activeDot={{ r: 5, fill: '#f59e0b', strokeWidth: 2 }}
-                              strokeDasharray="3 3"
-                            />
-                            <Line 
-                              type="monotone" 
-                              dataKey="tempForeigner" 
-                              stroke="#ef4444" 
-                              strokeWidth={2}
-                              dot={{ fill: '#ef4444', strokeWidth: 2, r: 3 }}
-                              activeDot={{ r: 5, fill: '#ef4444', strokeWidth: 2 }}
-                              strokeDasharray="7 3"
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      );
+                                             return (
+                         <div style={{ width: '100%', height: '100%' }}>
+                           <DualAxisLineChart 
+                             data={timeBasedChartData} 
+                             width={800} 
+                             height={320} 
+                           />
+                         </div>
+                       );
                     })()}
                   </div>
                 </div>
@@ -1434,7 +1262,15 @@ export default function DetailedStatsPage() {
                                 borderRadius: '6px'
                               }}
                             />
-                            <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                            <Bar 
+                              dataKey="total" 
+                              fill="#3b82f6" 
+                              radius={[4, 4, 0, 0]}
+                              label={(props) => {
+                                const total = weekdayWeekendGenderChartData.reduce((sum, item) => sum + item.total, 0);
+                                return <CustomBarLabel {...props} total={total} />;
+                              }}
+                            />
                           </BarChart>
                         </ResponsiveContainer>
                       );
@@ -1468,7 +1304,7 @@ export default function DetailedStatsPage() {
                       }
                       return (
                         <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={weekdayWeekendData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                          <BarChart data={weekdayWeekendData} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                             <XAxis 
                               dataKey="type" 
@@ -1495,9 +1331,21 @@ export default function DetailedStatsPage() {
                                 border: '1px solid #e5e7eb',
                                 borderRadius: '6px'
                               }}
-                              formatter={(value) => [`${Math.round(value).toLocaleString()}명`, '인구']}
+                              formatter={(value) => {
+                                const total = weekdayWeekendData.reduce((sum, item) => sum + item.population, 0);
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return [`${Math.round(value).toLocaleString()}명 (${percentage}%)`, '인구'];
+                              }}
                             />
-                            <Bar dataKey="population" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                            <Bar 
+                              dataKey="population" 
+                              fill="#3b82f6" 
+                              radius={[4, 4, 0, 0]}
+                              label={(props) => {
+                                const total = weekdayWeekendData.reduce((sum, item) => sum + item.population, 0);
+                                return <CustomBarLabel {...props} total={total} />;
+                              }}
+                            />
                           </BarChart>
                         </ResponsiveContainer>
                       );
@@ -1536,6 +1384,7 @@ export default function DetailedStatsPage() {
                               outerRadius={100}
                               innerRadius={60}
                               fill="#3b82f6"
+                              label={<CustomPieLabel />}
                             >
                               {dayNightData.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={entry.fill} />
@@ -1547,11 +1396,19 @@ export default function DetailedStatsPage() {
                                 border: '1px solid #e5e7eb',
                                 borderRadius: '6px'
                               }}
-                              formatter={(value) => [`${Math.round(value).toLocaleString()}명`, '인구']}
+                              formatter={(value, name, props) => {
+                                const total = dayNightData.reduce((sum, item) => sum + item.population, 0);
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return [`${Math.round(value).toLocaleString()}명 (${percentage}%)`, '인구'];
+                              }}
                             />
                             <Legend 
                               wrapperStyle={{ paddingTop: '10px' }}
-                              formatter={(value) => value}
+                              formatter={(value, entry) => {
+                                const total = dayNightData.reduce((sum, item) => sum + item.population, 0);
+                                const percentage = total > 0 ? ((entry.payload.population / total) * 100).toFixed(1) : 0;
+                                return `${value} (${percentage}%)`;
+                              }}
                             />
                           </PieChart>
                         </ResponsiveContainer>
@@ -1617,18 +1474,40 @@ export default function DetailedStatsPage() {
                               borderRadius: '6px',
                               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
                             }}
-                            formatter={(value, name) => [
-                              `${Math.round(value).toLocaleString()}명`, 
-                              name === 'male' ? '남성' : '여성'
-                            ]}
+                            formatter={(value, name) => {
+                              const total = ageGenderData.reduce((sum, item) => sum + item.male + item.female, 0);
+                              const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                              return [
+                                `${Math.round(value).toLocaleString()}명 (${percentage}%)`, 
+                                name === 'male' ? '남성' : '여성'
+                              ];
+                            }}
                             labelFormatter={(label) => `연령대: ${label}`}
                           />
                           <Legend 
                             wrapperStyle={{ paddingTop: '10px' }}
                             formatter={(value) => value === 'male' ? '남성' : '여성'}
                           />
-                          <Bar dataKey="male" fill="#3b82f6" name="male" radius={[2, 2, 0, 0]} />
-                          <Bar dataKey="female" fill="#ef4444" name="female" radius={[2, 2, 0, 0]} />
+                          <Bar 
+                            dataKey="male" 
+                            fill="#3b82f6" 
+                            name="male" 
+                            radius={[2, 2, 0, 0]}
+                            label={(props) => {
+                              const total = ageGenderData.reduce((sum, item) => sum + item.male + item.female, 0);
+                              return <CustomBarLabel {...props} total={total} />;
+                            }}
+                          />
+                          <Bar 
+                            dataKey="female" 
+                            fill="#ef4444" 
+                            name="female" 
+                            radius={[2, 2, 0, 0]}
+                            label={(props) => {
+                              const total = ageGenderData.reduce((sum, item) => sum + item.male + item.female, 0);
+                              return <CustomBarLabel {...props} total={total} />;
+                            }}
+                          />
                         </BarChart>
                       </ResponsiveContainer>
                     );
@@ -1664,6 +1543,7 @@ export default function DetailedStatsPage() {
                               outerRadius={100}
                               innerRadius={60}
                               fill="#3b82f6"
+                              label={<CustomPieLabel />}
                             >
                               {genderData.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -1675,11 +1555,50 @@ export default function DetailedStatsPage() {
                                 border: '1px solid #e5e7eb',
                                 borderRadius: '6px'
                               }}
+                              formatter={(value, name, props) => {
+                                const total = genderData.reduce((sum, item) => sum + item.value, 0);
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return [`${Math.round(value).toLocaleString()}명 (${percentage}%)`, '인구'];
+                              }}
                             />
-                            <Legend />
+                            <Legend 
+                              formatter={(value, entry) => {
+                                const total = genderData.reduce((sum, item) => sum + item.value, 0);
+                                const percentage = total > 0 ? ((entry.payload.value / total) * 100).toFixed(1) : 0;
+                                return `${value} (${percentage}%)`;
+                              }}
+                            />
                           </PieChart>
                         </ResponsiveContainer>
                       );
+                    })()}
+                  </div>
+                </div>
+
+                {/* dailyData 기반 시간대별 인구 변화 차트 */}
+                <div className="p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
+                  <h3 className="text-lg font-semibold text-black mb-4">일별 데이터 기반 시간대별 인구 변화</h3>
+                  <div className="h-80">
+                                         {(() => {
+                       const dailyTimeChartData = getTimeBasedChartData();
+                       if (!dailyTimeChartData || dailyTimeChartData.length === 0) {
+                        return (
+                          <div className="flex items-center justify-center h-full text-gray-500">
+                            <div className="text-center">
+                              <p>일별 데이터가 없습니다</p>
+                            </div>
+                          </div>
+                        );
+                      }
+                                             return (
+                         <div style={{ width: '100%', height: '100%' }}>
+                           <DualAxisLineChart 
+                             data={dailyTimeChartData} 
+                             width={800} 
+                             height={320} 
+                           />
+                         </div>
+                       );
                     })()}
                   </div>
                 </div>
@@ -1711,9 +1630,33 @@ export default function DetailedStatsPage() {
                                 border: '1px solid #e5e7eb',
                                 borderRadius: '6px'
                               }}
+                              formatter={(value, name) => {
+                                const total = ageGroupChartData.reduce((sum, item) => sum + item.male + item.female, 0);
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return [
+                                  `${Math.round(value).toLocaleString()}명 (${percentage}%)`, 
+                                  name === 'male' ? 'Male' : 'Female'
+                                ];
+                              }}
                             />
-                            <Bar dataKey="male" fill="#3b82f6" name="Male" />
-                            <Bar dataKey="female" fill="#8b5cf6" name="Female" />
+                            <Bar 
+                              dataKey="male" 
+                              fill="#3b82f6" 
+                              name="Male"
+                              label={(props) => {
+                                const total = ageGroupChartData.reduce((sum, item) => sum + item.male + item.female, 0);
+                                return <CustomBarLabel {...props} total={total} />;
+                              }}
+                            />
+                            <Bar 
+                              dataKey="female" 
+                              fill="#8b5cf6" 
+                              name="Female"
+                              label={(props) => {
+                                const total = ageGroupChartData.reduce((sum, item) => sum + item.male + item.female, 0);
+                                return <CustomBarLabel {...props} total={total} />;
+                              }}
+                            />
                             <Legend />
                           </BarChart>
                         </ResponsiveContainer>
@@ -1818,13 +1761,7 @@ export default function DetailedStatsPage() {
                     {langGraphLoading ? 'LangGraph 분석 중...' : 'GPT-4o-mini 분석 시작'}
                   </button>
                   
-                  <button
-                    onClick={runAgentAnalysis}
-                    disabled={agentLoading || loading}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {agentLoading ? 'Agent 분석 중...' : 'DistilGPT-2 분석'}
-                  </button>
+
                   
                   {(langGraphLoading || agentLoading) && (
                     <div className="flex items-center text-gray-600">

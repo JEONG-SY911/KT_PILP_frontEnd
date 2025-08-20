@@ -172,15 +172,12 @@ export const apiClient = {
   },
 
   // 인구 데이터 관련 API 함수들
-  // 일별 데이터 (시간대 정보 포함)
+  // 일별 데이터 (새로운 DailyPopulationDto 구조)
   async getDailyPopulation(dongCode) {
     return this.request(`/population/gangnam/dongs/${dongCode}/daily`);
   },
 
-  // 시간대별 데이터
-  async getTimeBasedPopulation(dongCode) {
-    return this.request(`/population/gangnam/dongs/${dongCode}/time-based`);
-  },
+
 
   // 일일 통계
   async getDailyStats(dongCode) {
@@ -284,61 +281,7 @@ export const pythonApiClient = {
   }
 };
 
-// LLM API 클라이언트 (인구 데이터 분석용)
-const LLM_API_BASE_URL = 'http://localhost:8001';
 
-export const llmApiClient = {
-  // 공통 요청 함수
-  async request(endpoint, options = {}) {
-    const url = `${LLM_API_BASE_URL}${endpoint}`;
-    const config = {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-      ...options,
-    };
-
-    const response = await fetch(url, config);
-    
-    if (!response.ok) {
-      throw new Error(`LLM API 요청 실패: ${response.status}`);
-    }
-    
-    return response.json();
-  },
-
-  // 서버 상태 확인
-  async healthCheck() {
-    return this.request('/health');
-  },
-
-  // 인구 데이터 종합 분석
-  async analyzePopulationInsights(dongName, populationData, timeStats, genderStats, ageStats) {
-    return this.request('/analyze/population-insights', {
-      method: 'POST',
-      body: JSON.stringify({
-        dongName,
-        populationData,
-        timeStats,
-        genderStats,
-        ageStats
-      }),
-    });
-  },
-
-  // 인구 예측 결과 분석
-  async analyzeTrendPrediction(dongName, predictionData, currentStats) {
-    return this.request('/analyze/trend-prediction', {
-      method: 'POST',
-      body: JSON.stringify({
-        dongName,
-        predictionData,
-        currentStats
-      }),
-    });
-  }
-};
 
 // AI Agent API 클라이언트 (단계별 분석용)
 const AGENT_API_BASE_URL = 'http://localhost:8002';
@@ -396,7 +339,7 @@ export const agentApiClient = {
 };
 
 // LangGraph Agent API 클라이언트 (GPT-4o-mini + LangGraph)
-const LANGGRAPH_API_BASE_URL = 'http://localhost:8003';
+const LANGGRAPH_API_BASE_URL = 'http://localhost:8004';
 
 export const langGraphApiClient = {
   // 공통 요청 함수
@@ -530,7 +473,7 @@ export const aiBundleApiClient = {
     return response.json();
   },
 
-  // AI Bundle 데이터 조회 및 인사이트 생성
+  // AI Bundle 데이터 조회 및 인사이트 생성 (새로운 엔드포인트)
   async getAiBundle(adstrdCode, date = null) {
     const dateParam = date ? `?date=${date}` : '';
     return this.request(`/population/ai/bundle/${adstrdCode}${dateParam}`, {

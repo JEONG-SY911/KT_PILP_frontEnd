@@ -14,6 +14,46 @@ import {
 // 색상 팔레트
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
+// 커스텀 파이 차트 라벨 컴포넌트
+const CustomPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, name, value }) => {
+  const RADIAN = Math.PI / 180;
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+  return (
+    <text 
+      x={x} 
+      y={y} 
+      fill="white" 
+      textAnchor={x > cx ? 'start' : 'end'} 
+      dominantBaseline="central"
+      fontSize="12"
+      fontWeight="bold"
+    >
+      {`${(percent * 100).toFixed(1)}%`}
+    </text>
+  );
+};
+
+// 커스텀 바 차트 라벨 컴포넌트
+const CustomBarLabel = ({ x, y, width, height, value, total }) => {
+  const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+  return (
+    <text 
+      x={x + width / 2} 
+      y={y - 5} 
+      fill="#374151" 
+      textAnchor="middle" 
+      dominantBaseline="bottom"
+      fontSize="11"
+      fontWeight="500"
+    >
+      {`${percentage}%`}
+    </text>
+  );
+};
+
 export default function DongDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -156,6 +196,7 @@ export default function DongDetailPage() {
     
     console.log('timeBasedData:', timeBasedData);
     
+    // 새로운 DailyPopulationDto 구조 지원
     const chartData = timeBasedData.map(item => ({
       time: item.timeRange || '시간대 없음',
       total: item.totalPopulation || 0,
@@ -465,7 +506,14 @@ export default function DongDetailPage() {
                       <XAxis dataKey="type" />
                       <YAxis />
                       <Tooltip />
-                      <Bar dataKey="population" fill="#8884d8" />
+                      <Bar 
+                        dataKey="population" 
+                        fill="#8884d8"
+                        label={(props) => {
+                          const total = getWeekdayWeekendChartData().reduce((sum, item) => sum + item.population, 0);
+                          return <CustomBarLabel {...props} total={total} />;
+                        }}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -495,13 +543,26 @@ export default function DongDetailPage() {
                         outerRadius={60}
                         fill="#8884d8"
                         dataKey="value"
+                        label={<CustomPieLabel />}
                       >
                         {COLORS.map((color, index) => (
                           <Cell key={`cell-${index}`} fill={color} />
                         ))}
                       </Pie>
-                      <Tooltip />
-                      <Legend />
+                      <Tooltip 
+                        formatter={(value, name, props) => {
+                          const total = (genderAgeStats.malePopulation || 0) + (genderAgeStats.femalePopulation || 0);
+                          const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                          return [`${Math.round(value).toLocaleString()}명 (${percentage}%)`, '인구'];
+                        }}
+                      />
+                      <Legend 
+                        formatter={(value, entry) => {
+                          const total = (genderAgeStats.malePopulation || 0) + (genderAgeStats.femalePopulation || 0);
+                          const percentage = total > 0 ? ((entry.payload.value / total) * 100).toFixed(1) : 0;
+                          return `${value} (${percentage}%)`;
+                        }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -529,8 +590,21 @@ export default function DongDetailPage() {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="time" />
                       <YAxis />
-                      <Tooltip />
-                      <Legend />
+                      <Tooltip 
+                        formatter={(value, name) => {
+                          const total = getTimeBasedChartData().reduce((sum, item) => sum + (item.total || 0), 0);
+                          const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                          return [`${Math.round(value).toLocaleString()}명 (${percentage}%)`, name];
+                        }}
+                      />
+                      <Legend 
+                        formatter={(value, entry) => {
+                          const total = getTimeBasedChartData().reduce((sum, item) => sum + (item.total || 0), 0);
+                          const avgValue = getTimeBasedChartData().reduce((sum, item) => sum + (item[entry.dataKey] || 0), 0) / getTimeBasedChartData().length;
+                          const percentage = total > 0 ? ((avgValue / total) * 100).toFixed(1) : 0;
+                          return `${value} (평균 ${percentage}%)`;
+                        }}
+                      />
                       <Area type="monotone" dataKey="total" stackId="1" stroke="#8884d8" fill="#8884d8" />
                       <Line type="monotone" dataKey="local" stroke="#82ca9d" strokeWidth={2} />
                       <Line type="monotone" dataKey="tempForeigner" stroke="#ffc658" strokeWidth={2} />
