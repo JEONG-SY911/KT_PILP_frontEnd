@@ -1,0 +1,490 @@
+PLIP Population API 엔드포인트 목록
+=====================================
+
+홈페이지 & 헬스체크
+------------------
+GET /                    # 홈페이지 (API 정보)
+GET /health             # 서버 상태 확인
+
+서울 전체 구 목록
+---------------
+GET /population/seoul/districts                  # 서울 전체 구 목록 조회 (활성화된 구만)
+GET /population/seoul/districts/{districtCode}   # 구 코드로 구 정보 조회
+GET /population/seoul/districts/name/{districtName} # 구 이름으로 구 정보 조회
+POST /population/seoul/districts                 # 새 구 추가
+PUT /population/seoul/districts/{districtCode}   # 구 정보 수정
+DELETE /population/seoul/districts/{districtCode} # 구 비활성화
+
+강남구 동 목록
+-------------
+GET /population/gangnam/dongs                    # 강남구 동 목록 조회
+
+강남구 상세 통계 (분리된 API)
+---------------------------
+# 일별 데이터 (시간대 정보 포함)
+GET /population/gangnam/dongs/{adstrdCode}/daily
+GET /population/gangnam/dongs/name/{dongName}/daily
+
+# 시간대별 데이터
+GET /population/gangnam/dongs/{adstrdCode}/time-based
+
+# 일일 통계 (평균/최대/최소)
+GET /population/gangnam/dongs/{adstrdCode}/stats/daily
+
+# 주간/야간 통계
+GET /population/gangnam/dongs/{adstrdCode}/stats/day-night
+
+# 시간대/요일별 통계
+GET /population/gangnam/dongs/{adstrdCode}/stats/time-week
+
+# 주중/주말 통계
+GET /population/gangnam/dongs/{adstrdCode}/stats/weekday-weekend
+
+# 성별/연령별 통계
+GET /population/gangnam/dongs/{adstrdCode}/stats/gender-age
+
+# 성별별 총 인구수
+GET /population/gangnam/dongs/{adstrdCode}/stats/gender
+
+# 성별별 연령대 분포
+GET /population/gangnam/dongs/{adstrdCode}/stats/gender-age-distribution
+
+# 성별별 시간대 분포
+GET /population/gangnam/dongs/{adstrdCode}/stats/gender-time
+
+국내 인구 데이터
+--------------
+GET /population/local-people/                    # 모든 국내 인구 데이터 조회
+GET /population/local-people/code/{adstrdCode}   # 행정동 코드로 국내 인구 조회
+GET /population/local-people/min-population/{minPopulation} # 최소 인구수 이상인 지역 조회
+
+단기체류 외국인 데이터
+-------------------
+GET /population/temp-foreigner/                  # 모든 단기체류 외국인 데이터 조회
+GET /population/temp-foreigner/{adstrdCode}      # 행정동 코드로 단기체류 외국인 조회
+GET /population/temp-foreigner/{adstrdCode}/stats # 단기체류 외국인 통계 조회
+
+장기체류 외국인 데이터
+-------------------
+GET /population/long-foreigner/                  # 모든 장기체류 외국인 데이터 조회
+GET /population/long-foreigner/{adstrdCode}      # 행정동 코드로 장기체류 외국인 조회
+GET /population/long-foreigner/{adstrdCode}/stats # 장기체류 외국인 통계 조회
+
+인증 관리
+----------
+POST /auth/signup           # 회원가입
+POST /auth/login            # 로그인 (세션 기반)
+POST /auth/logout           # 로그아웃
+GET /auth/check             # 로그인 상태 확인
+
+사용자 관리 (마이페이지)
+-----------------------
+GET /api/users/me           # 내 정보 조회 (마이페이지)
+PUT /api/users/me/profile   # 프로필 수정 (닉네임 변경)
+GET /api/users/me/favorites # 내 즐겨찾기 목록 조회
+
+즐겨찾기 관리
+-----------
+POST /favorites/add         # 즐겨찾기 지역 추가
+GET /favorites/my           # 내 즐겨찾기 지역 목록 조회
+GET /favorites/check/{adstrdCodeSe} # 즐겨찾기 상태 확인
+DELETE /favorites/remove/{adstrdCodeSe} # 즐겨찾기 지역 삭제
+
+응답 구조 예시
+============
+
+1. 일별 데이터 (시간대 정보 포함)
+GET /population/gangnam/dongs/11680640/daily
+
+{
+  "dailyDataList": [
+    {
+      "date": "20250813",
+      "timeZone": "새벽",
+      "timeRange": "00:00-01:00",
+      "tmzonPdSe": "01",
+      "totalPopulation": 1047,
+      "localPopulation": 827,
+      "tempForeignerPopulation": 127,
+      "longForeignerPopulation": 93
+    },
+    {
+      "date": "20250813",
+      "timeZone": "오전",
+      "timeRange": "05:00-06:00",
+      "tmzonPdSe": "06",
+      "totalPopulation": 1550,
+      "localPopulation": 1200,
+      "tempForeignerPopulation": 200,
+      "longForeignerPopulation": 150
+    }
+  ]
+}
+
+2. 시간대별 데이터
+GET /population/gangnam/dongs/11680640/time-based
+
+{
+  "timeDataList": [
+    {
+      "date": "20250813",
+      "timeZone": "새벽",
+      "timeRange": "00:00-01:00",
+      "tmzonPdSe": "01",
+      "totalPopulation": 1047,
+      "localPopulation": 827,
+      "tempForeignerPopulation": 127,
+      "longForeignerPopulation": 93
+    }
+  ]
+}
+
+3. 일일 통계
+GET /population/gangnam/dongs/11680640/stats/daily
+
+{
+  "averagePopulation": 1050,
+  "maxPopulation": 1200,
+  "minPopulation": 900,
+  "maxDate": "2024-01-15",
+  "minDate": "2024-01-01"
+}
+
+4. 주간/야간 통계
+GET /population/gangnam/dongs/11680640/stats/day-night
+
+{
+  "dayPopulation": 800,
+  "nightPopulation": 200,
+  "dayNightRatio": 4.0
+}
+
+5. 시간대/요일별 통계
+GET /population/gangnam/dongs/11680640/stats/time-week
+
+{
+  "timeSlotPopulation": {
+    "00": 100,
+    "01": 80,
+    "12": 500
+  },
+  "weekdayPopulation": {
+    "월요일": 200,
+    "화요일": 220
+  }
+}
+
+6. 주중/주말 통계
+GET /population/gangnam/dongs/11680640/stats/weekday-weekend
+
+{
+  "weekdayPopulation": 800,
+  "weekendPopulation": 400,
+  "ageGroupWeekday": {
+    "20대": 200,
+    "30대": 300
+  },
+  "ageGroupWeekend": {
+    "20대": 100,
+    "30대": 150
+  }
+}
+
+7. 성별/연령별 통계
+GET /population/gangnam/dongs/11680640/stats/gender-age
+
+{
+  "malePopulation": 500,
+  "femalePopulation": 580,
+  "maleAgeGroup": {
+    "0-9": 50,
+    "10-14": 30,
+    "15-19": 40,
+    "20-24": 80,
+    "25-29": 70,
+    "30-34": 60,
+    "35-39": 50,
+    "40-44": 40,
+    "45-49": 30,
+    "50-54": 25,
+    "55-59": 20,
+    "60-64": 15,
+    "65-69": 10,
+    "70+": 20
+  },
+  "femaleAgeGroup": {
+    "0-9": 55,
+    "10-14": 35,
+    "15-19": 45,
+    "20-24": 85,
+    "25-29": 75,
+    "30-34": 65,
+    "35-39": 55,
+    "40-44": 45,
+    "45-49": 35,
+    "50-54": 30,
+    "55-59": 25,
+    "60-64": 20,
+    "65-69": 15,
+    "70+": 25
+  }
+}
+
+8. 성별별 총 인구수
+GET /population/gangnam/dongs/11680640/stats/gender
+
+{
+  "maleTotal": 500,
+  "femaleTotal": 580,
+  "totalPopulation": 1080,
+  "maleRatio": 46.3,
+  "femaleRatio": 53.7
+}
+
+9. 성별별 연령대 분포
+GET /population/gangnam/dongs/11680640/stats/gender-age-distribution
+
+{
+  "male": {
+    "0-9": 50,
+    "10-14": 30,
+    "15-19": 40,
+    "20-24": 80,
+    "25-29": 70,
+    "30-34": 60,
+    "35-39": 50,
+    "40-44": 40,
+    "45-49": 30,
+    "50-54": 25,
+    "55-59": 20,
+    "60-64": 15,
+    "65-69": 10,
+    "70+": 20
+  },
+  "female": {
+    "0-9": 55,
+    "10-14": 35,
+    "15-19": 45,
+    "20-24": 85,
+    "25-29": 75,
+    "30-34": 65,
+    "35-39": 55,
+    "40-44": 45,
+    "45-49": 35,
+    "50-54": 30,
+    "55-59": 25,
+    "60-64": 20,
+    "65-69": 15,
+    "70+": 25
+  }
+}
+
+10. 성별별 시간대 분포
+GET /population/gangnam/dongs/11680640/stats/gender-time
+
+{
+  "male": {
+    "새벽": 100,
+    "오전": 200,
+    "오후": 150,
+    "저녁": 80,
+    "밤": 70
+  },
+  "female": {
+    "새벽": 120,
+    "오전": 250,
+    "오후": 180,
+    "저녁": 100,
+    "밤": 90
+  }
+}
+
+8. 국내 인구 데이터
+GET /population/local-people/code/11680640
+
+[
+  {
+    "id": 1,
+    "totLvpopCo": 827,
+    "stdrDeId": "20250813",
+    "tmzonPdSe": "01",
+    "adstrdCodeSe": "11680640",
+    "timeZone": "새벽",
+    "timeRange": "00:00-01:00",
+    "maleF0t9LvpopCo": 50,
+    "maleF10t14LvpopCo": 30,
+    "maleF15t19LvpopCo": 40,
+    "maleF20t24LvpopCo": 80,
+    "maleF25t29LvpopCo": 70,
+    "maleF30t34LvpopCo": 60,
+    "maleF35t39LvpopCo": 50,
+    "maleF40t44LvpopCo": 40,
+    "maleF45t49LvpopCo": 30,
+    "maleF50t54LvpopCo": 25,
+    "maleF55t59LvpopCo": 20,
+    "maleF60t64LvpopCo": 15,
+    "maleF65t69LvpopCo": 10,
+    "maleF70t74LvpopCo": 20,
+    "femaleF0t9LvpopCo": 55,
+    "femaleF10t14LvpopCo": 35,
+    "femaleF15t19LvpopCo": 45,
+    "femaleF20t24LvpopCo": 85,
+    "femaleF25t29LvpopCo": 75,
+    "femaleF30t34LvpopCo": 65,
+    "femaleF35t39LvpopCo": 55,
+    "femaleF40t44LvpopCo": 45,
+    "femaleF45t49LvpopCo": 35,
+    "femaleF50t54LvpopCo": 30,
+    "femaleF55t59LvpopCo": 25,
+    "femaleF60t64LvpopCo": 20,
+    "femaleF65t69LvpopCo": 15,
+    "femaleF70t74LvpopCo": 25
+  }
+]
+
+요청/응답 예시
+=============
+
+회원가입:
+POST /auth/signup
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "email": "test@example.com",
+  "password": "password123",
+  "nickname": "테스트유저"
+}
+
+응답:
+{
+  "message": "회원가입이 완료되었습니다.",
+  "id": 1,
+  "username": "testuser",
+  "email": "test@example.com",
+  "nickname": "테스트유저"
+}
+
+로그인:
+POST /auth/login
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "password": "password123"
+}
+
+응답:
+{
+  "id": 1,
+  "username": "testuser",
+  "email": "test@example.com",
+  "nickname": "테스트유저"
+}
+
+로그인 상태 확인:
+GET /auth/check
+
+응답:
+{
+  "loggedIn": true,
+  "user": {
+    "id": 1,
+    "username": "testuser",
+    "email": "test@example.com",
+    "nickname": "테스트유저"
+  }
+}
+
+프로필 수정:
+PUT /api/users/me/profile
+Content-Type: application/json
+
+{
+  "nickname": "새로운닉네임"
+}
+
+즐겨찾기 추가:
+POST /favorites/add
+Content-Type: application/json
+
+{
+  "adstrdCodeSe": "11680640"
+}
+
+즐겨찾기 상태 확인:
+GET /favorites/check/11680640
+
+응답:
+{
+  "isFavorite": true
+}
+
+즐겨찾기 목록 조회:
+GET /favorites/my
+
+응답:
+[
+  {
+    "id": 1,
+    "adstrdCodeSe": "11680640",
+    "dongName": "역삼2동"
+  }
+]
+
+CORS 설정
+========
+- 모든 API에 전역 CORS 설정 적용
+- allowedOriginPatterns("*")
+- allowCredentials(true)
+- 프론트엔드에서 자유롭게 API 호출 가능
+
+사용 방법
+========
+1. 먼저 GET /population/gangnam/dongs로 사용 가능한 동 목록을 조회
+2. 원하는 동의 행정동 코드로 개별 통계 API 호출
+3. 필요한 통계만 선택적으로 조회 가능
+4. 사용자 기능은 회원가입 후 세션 기반으로 즐겨찾기 관리
+
+시간대 구분
+==========
+- 01-05: 새벽 (00:00-05:00)
+- 06-11: 오전 (05:00-12:00)  
+- 12-17: 오후 (12:00-18:00)
+- 18-21: 저녁 (18:00-22:00)
+- 22-24: 밤 (22:00-24:00)
+
+테스트 명령어
+===========
+# 강남구 동 목록
+http GET :8081/population/gangnam/dongs
+
+# 일별 데이터 (시간대 정보 포함)
+http GET :8081/population/gangnam/dongs/11680640/daily
+
+# 시간대별 데이터
+http GET :8081/population/gangnam/dongs/11680640/time-based
+
+# 일일 통계
+http GET :8081/population/gangnam/dongs/11680640/stats/daily
+
+# 국내 인구 데이터
+http GET :8081/population/local-people/code/11680640
+
+# 단기체류 외국인 데이터
+http GET :8081/population/temp-foreigner/11680640
+
+# 장기체류 외국인 데이터
+http GET :8081/population/long-foreigner/11680640
+
+# 성별/연령별 통계
+http GET :8081/population/gangnam/dongs/11680640/stats/gender-age
+
+# 성별별 총 인구수
+http GET :8081/population/gangnam/dongs/11680640/stats/gender
+
+# 성별별 연령대 분포
+http GET :8081/population/gangnam/dongs/11680640/stats/gender-age-distribution
+
+# 성별별 시간대 분포
+http GET :8081/population/gangnam/dongs/11680640/stats/gender-time

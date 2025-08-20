@@ -1,0 +1,11 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+pandas>=2.2.0
+numpy>=1.26.0
+prophet>=1.1.5
+scikit-learn>=1.3.0
+matplotlib>=3.8.0
+requests>=2.31.0
+python-multipart>=0.0.6
+pyngrok>=7.0.0
+nest-asyncio>=1.5.8
