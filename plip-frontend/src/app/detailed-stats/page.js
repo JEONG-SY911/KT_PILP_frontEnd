@@ -85,8 +85,12 @@ export default function DetailedStatsPage() {
   const [predictionData, setPredictionData] = useState(null);
   const [predictionLoading, setPredictionLoading] = useState(false);
   const [modelTrained, setModelTrained] = useState(false);
-
-
+  const [predictionError, setPredictionError] = useState(null);
+  
+  // 예측 비교 상태 추가
+  const [comparisonData, setComparisonData] = useState(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonError, setComparisonError] = useState(null);
 
   // AI Agent 분석 상태
   const [agentAnalysis, setAgentAnalysis] = useState(null);
@@ -551,7 +555,29 @@ export default function DetailedStatsPage() {
     }
   };
 
+  // 예측 결과와 실제 데이터 비교
+  const runPredictionComparison = async () => {
+    if (!modelTrained) {
+      setPredictionError('먼저 모델을 훈련해주세요.');
+      return;
+    }
 
+    setComparisonLoading(true);
+    setComparisonError(null);
+    
+    try {
+      console.log('예측 비교 시작...');
+      const targetDate = new Date().toISOString().split('T')[0]; // 오늘 날짜
+      const result = await pythonApiClient.predictWithComparison(selectedDong, targetDate);
+      console.log('예측 비교 완료:', result);
+      setComparisonData(result);
+    } catch (err) {
+      console.error('예측 비교 실패:', err);
+      setComparisonError(err.message);
+    } finally {
+      setComparisonLoading(false);
+    }
+  };
 
   // AI Agent 단계별 분석 실행 함수
   const runAgentAnalysis = async () => {
@@ -969,6 +995,34 @@ export default function DetailedStatsPage() {
                 <p className="text-sm text-gray-600">Comprehensive population insights</p>
               </div>
             </div>
+            
+            {/* 네비게이션 */}
+            <nav className="hidden md:flex items-center gap-6">
+              <button
+                onClick={() => router.push('/seoul-dashboard')}
+                className="text-sm text-gray-600 hover:text-black transition-colors"
+              >
+                Dashboard
+              </button>
+              <button
+                onClick={() => router.push('/gangnam-dongs')}
+                className="text-sm text-gray-600 hover:text-black transition-colors"
+              >
+                Regional Analysis
+              </button>
+              <button
+                onClick={() => router.push('/detailed-stats')}
+                className="text-sm text-black font-medium"
+              >
+                Analytics
+              </button>
+              <button
+                onClick={() => router.push('/comparison-analysis')}
+                className="text-sm text-gray-600 hover:text-black transition-colors"
+              >
+                비교분석
+              </button>
+            </nav>
           </div>
         </div>
       </div>
@@ -1743,6 +1797,171 @@ export default function DetailedStatsPage() {
                   })()}
                 </div>
               </div>
+
+              {/* Prophet 예측 섹션 */}
+              <div className="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 className="text-xl font-semibold text-black mb-6">Prophet 인구 예측</h3>
+                
+                <div className="flex gap-4 mb-6">
+                  <button
+                    onClick={trainProphetModel}
+                    disabled={predictionLoading}
+                    className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    {predictionLoading ? '훈련 중...' : '모델 훈련'}
+                  </button>
+                  
+                  <button
+                    onClick={runPredictionComparison}
+                    disabled={!modelTrained || comparisonLoading}
+                    className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    {comparisonLoading ? '예측 중...' : '예측 + 실제 데이터 비교'}
+                  </button>
+                </div>
+
+                {predictionError && (
+                  <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-red-700">{predictionError}</p>
+                  </div>
+                )}
+
+                {comparisonError && (
+                  <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-red-700">{comparisonError}</p>
+                  </div>
+                )}
+
+                {modelTrained && (
+                  <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-green-700">✅ Prophet 모델이 훈련되었습니다.</p>
+                  </div>
+                )}
+
+                {/* 기존 예측 결과 */}
+                {predictionData && (
+                  <div className="space-y-6">
+                    {/* 기존 예측 그래프들... */}
+                  </div>
+                )}
+
+                {/* 예측 비교 결과 */}
+                {comparisonData && (
+                  <div className="space-y-6">
+                    {/* 성능 지표 */}
+                    {comparisonData.summary?.performance && (
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                        <div className="text-center p-4 bg-gray-50 rounded-lg">
+                          <div className="text-2xl font-bold text-black">
+                            {comparisonData.summary.performance.mae.toFixed(1)}
+                          </div>
+                          <div className="text-sm text-gray-600">MAE</div>
+                        </div>
+                        <div className="text-center p-4 bg-gray-50 rounded-lg">
+                          <div className="text-2xl font-bold text-black">
+                            {comparisonData.summary.performance.mape.toFixed(1)}%
+                          </div>
+                          <div className="text-sm text-gray-600">MAPE</div>
+                        </div>
+                        <div className="text-center p-4 bg-gray-50 rounded-lg">
+                          <div className="text-2xl font-bold text-black">
+                            {comparisonData.summary.performance.rmse.toFixed(1)}
+                          </div>
+                          <div className="text-sm text-gray-600">RMSE</div>
+                        </div>
+                        <div className="text-center p-4 bg-gray-50 rounded-lg">
+                          <div className="text-2xl font-bold text-black">
+                            {comparisonData.summary.performance.data_points}
+                          </div>
+                          <div className="text-sm text-gray-600">데이터 포인트</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 예측 vs 실제 비교 그래프 */}
+                    <div>
+                      <h4 className="text-lg font-medium text-black mb-4">
+                        예측 vs 실제 데이터 비교 ({comparisonData.prediction_date} vs {comparisonData.actual_date})
+                      </h4>
+                      <ResponsiveContainer width="100%" height={400}>
+                        <ComposedChart data={comparisonData.comparison_data}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis 
+                            dataKey="hour" 
+                            tick={{ fontSize: 12 }}
+                            label={{ value: '시간', position: 'insideBottom', offset: -10 }}
+                          />
+                          <YAxis 
+                            tick={{ fontSize: 12 }}
+                            tickFormatter={(value) => value.toLocaleString()}
+                            label={{ value: '인구', angle: -90, position: 'insideLeft' }}
+                          />
+                          <Tooltip 
+                            formatter={(value, name) => [value.toLocaleString(), name]}
+                            labelFormatter={(label) => `${label}시`}
+                          />
+                          <Legend />
+                          <Line 
+                            type="monotone" 
+                            dataKey="predicted_population"
+                            stroke="#000000" 
+                            strokeWidth={2}
+                            name="예측 인구"
+                            dot={{ fill: '#000000', strokeWidth: 2, r: 4 }}
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="actual_population"
+                            stroke="#666666" 
+                            strokeWidth={2}
+                            strokeDasharray="5 5"
+                            name="실제 인구"
+                            dot={{ fill: '#666666', strokeWidth: 2, r: 4 }}
+                          />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* 예측 오류 분석 */}
+                    <div>
+                      <h4 className="text-lg font-medium text-black mb-4">예측 오류 분석</h4>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={comparisonData.comparison_data.filter(item => item.prediction_error !== null)}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="hour" />
+                          <YAxis />
+                          <Tooltip formatter={(value, name) => [value.toLocaleString(), name]} />
+                          <Legend />
+                          <Bar dataKey="prediction_error" fill="#FF6B6B" name="예측 오류" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* 요약 통계 */}
+                    {comparisonData.summary && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-gray-50 rounded-lg p-4">
+                          <h5 className="font-medium text-black mb-3">예측 결과</h5>
+                          <div className="space-y-2 text-sm">
+                            <div>최대 인구: {comparisonData.summary.prediction.peak_population?.toLocaleString()}명 ({comparisonData.summary.prediction.peak_hour}시)</div>
+                            <div>최소 인구: {comparisonData.summary.prediction.min_population?.toLocaleString()}명 ({comparisonData.summary.prediction.min_hour}시)</div>
+                            <div>평균 인구: {comparisonData.summary.prediction.avg_population?.toLocaleString()}명</div>
+                          </div>
+                        </div>
+                        
+                        <div className="bg-gray-50 rounded-lg p-4">
+                          <h5 className="font-medium text-black mb-3">실제 데이터</h5>
+                          <div className="space-y-2 text-sm">
+                            <div>최대 인구: {comparisonData.summary.actual.peak_population?.toLocaleString()}명 ({comparisonData.summary.actual.peak_hour}시)</div>
+                            <div>최소 인구: {comparisonData.summary.actual.min_population?.toLocaleString()}명 ({comparisonData.summary.actual.min_hour}시)</div>
+                            <div>평균 인구: {comparisonData.summary.actual.avg_population?.toLocaleString()}명</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -1760,8 +1979,6 @@ export default function DetailedStatsPage() {
                   >
                     {langGraphLoading ? 'LangGraph 분석 중...' : 'GPT-4o-mini 분석 시작'}
                   </button>
-                  
-
                   
                   {(langGraphLoading || agentLoading) && (
                     <div className="flex items-center text-gray-600">
@@ -1912,28 +2129,6 @@ export default function DetailedStatsPage() {
               </div>
             </div>
           )}
-        </div>
-
-        {/* Key Insights 카드 */}
-        <div className="mt-8 p-6 bg-gray-50 border border-gray-200 rounded-lg">
-          <div className="flex items-start gap-4">
-            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="font-semibold text-black mb-2">
-                Key Insights for {gangnamDongs.find(d => d.id === selectedDong)?.name || 'Selected District'}
-              </h3>
-              <ul className="space-y-1 text-sm text-gray-600">
-                <li>• Peak population occurs at 6 PM with highest daily activity</li>
-                <li>• Friday shows the highest weekly activity with significant commercial traffic</li>
-                <li>• Young professionals represent the majority of the population</li>
-                <li>• Real-time data updates provide accurate trend analysis</li>
-              </ul>
-            </div>
-          </div>
         </div>
       </div>
     </div>

@@ -323,6 +323,34 @@ export default function SeoulDashboard() {
                 <p className="text-sm text-gray-600">자치구별 생활인구 현황</p>
               </div>
             </div>
+            
+            {/* 네비게이션 */}
+            <nav className="hidden md:flex items-center gap-6">
+              <button
+                onClick={() => window.location.href = '/seoul-dashboard'}
+                className="text-sm text-black font-medium"
+              >
+                Dashboard
+              </button>
+              <button
+                onClick={() => window.location.href = '/gangnam-dongs'}
+                className="text-sm text-gray-600 hover:text-black transition-colors"
+              >
+                Regional Analysis
+              </button>
+              <button
+                onClick={() => window.location.href = '/detailed-stats'}
+                className="text-sm text-gray-600 hover:text-black transition-colors"
+              >
+                Analytics
+              </button>
+              <button
+                onClick={() => window.location.href = '/comparison-analysis'}
+                className="text-sm text-gray-600 hover:text-black transition-colors"
+              >
+                비교분석
+              </button>
+            </nav>
           </div>
         </div>
       </header>

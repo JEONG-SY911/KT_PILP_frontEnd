@@ -173,8 +173,11 @@ export const apiClient = {
 
   // 인구 데이터 관련 API 함수들
   // 일별 데이터 (새로운 DailyPopulationDto 구조)
-  async getDailyPopulation(dongCode) {
-    return this.request(`/population/gangnam/dongs/${dongCode}/daily`);
+  async getDailyPopulation(dongCode, date = null) {
+    const endpoint = date 
+      ? `/population/gangnam/dongs/${dongCode}/daily?date=${date}`
+      : `/population/gangnam/dongs/${dongCode}/daily`;
+    return this.request(endpoint);
   },
 
 
@@ -217,6 +220,24 @@ export const apiClient = {
   // 국내 인구 데이터
   async getLocalPeopleData(dongCode) {
     return this.request(`/population/local-people/code/${dongCode}`);
+  },
+
+  // 한달 전 대비 인구 변화 조회
+  async getPopulationChange(dongCode, date) {
+    return this.request(`/population/gangnam/dongs/${dongCode}/stats/population-change?date=${date}`);
+  },
+
+  // 여러 동의 인구 변화 데이터 조회
+  async getMultiplePopulationChange(dongCodes, date) {
+    const promises = dongCodes.map(dongCode => 
+      this.getPopulationChange(dongCode, date).catch(err => {
+        console.error(`동 ${dongCode} 인구 변화 데이터 조회 실패:`, err);
+        return null;
+      })
+    );
+    
+    const results = await Promise.all(promises);
+    return results.filter(result => result !== null);
   },
 };
 
@@ -262,6 +283,17 @@ export const pythonApiClient = {
     return this.request(endpoint, {
       method: 'POST',
       body,
+    });
+  },
+
+  // 예측 결과와 실제 데이터 비교
+  async predictWithComparison(dongCode, targetDate = null) {
+    const params = new URLSearchParams();
+    if (targetDate) params.append('target_date', targetDate);
+    
+    const endpoint = `/predict/compare/${dongCode}${params.toString() ? '?' + params.toString() : ''}`;
+    return this.request(endpoint, {
+      method: 'POST',
     });
   },
 

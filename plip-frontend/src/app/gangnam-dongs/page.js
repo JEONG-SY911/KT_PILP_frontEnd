@@ -239,12 +239,34 @@ export default function GangnamDongsPage() {
                   Real-time data
                 </div>
               </div>
-              <button
-                onClick={() => window.location.href = '/seoul-dashboard'}
-                className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors"
-              >
-                Seoul Dashboard
-              </button>
+              
+              {/* 네비게이션 */}
+              <nav className="hidden md:flex items-center gap-6">
+                <button
+                  onClick={() => window.location.href = '/seoul-dashboard'}
+                  className="text-sm text-gray-600 hover:text-black transition-colors"
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => window.location.href = '/gangnam-dongs'}
+                  className="text-sm text-black font-medium"
+                >
+                  Regional Analysis
+                </button>
+                <button
+                  onClick={() => window.location.href = '/detailed-stats'}
+                  className="text-sm text-gray-600 hover:text-black transition-colors"
+                >
+                  Analytics
+                </button>
+                <button
+                  onClick={() => window.location.href = '/comparison-analysis'}
+                  className="text-sm text-gray-600 hover:text-black transition-colors"
+                >
+                  비교분석
+                </button>
+              </nav>
             </div>
           </div>
         </div>

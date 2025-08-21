@@ -499,7 +499,7 @@ def analyze_population_data(state: PopulationAnalysisState) -> PopulationAnalysi
     llm = ChatOpenAI(
         model="gpt-4o-mini",
         temperature=0.1,
-        max_tokens=500
+        max_tokens=1000
     )
     
     summary_prompt = ChatPromptTemplate.from_template("""

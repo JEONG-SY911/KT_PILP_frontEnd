@@ -94,17 +94,95 @@ export default function Home() {
   });
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
+  
+  // 인구 변화 데이터 상태
+  const [populationChangeData, setPopulationChangeData] = useState(null);
+  
+  // 강남구 특정 동 코드들
+  const gangnamDongCodes = [
+    "11680600",
+    "11680610", 
+    "11680630",
+    "11680640",
+    "11680650",
+    "11680565",
+    "11680510",
+    "11680545"
+  ];
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [homeResponse, healthResponse] = await Promise.all([
+        
+        // 6일 전 날짜를 YYYYMMDD 형식으로 변환
+        const sixDaysAgo = new Date();
+        sixDaysAgo.setDate(sixDaysAgo.getDate() - 6);
+        const dateString = sixDaysAgo.getFullYear().toString() + 
+                          String(sixDaysAgo.getMonth() + 1).padStart(2, '0') + 
+                          String(sixDaysAgo.getDate()).padStart(2, '0');
+        
+        const [homeResponse, healthResponse, multiplePopulationChangeResponse] = await Promise.all([
           apiClient.getHomeData(),
-          apiClient.getHealth()
+          apiClient.getHealth(),
+          apiClient.getMultiplePopulationChange(gangnamDongCodes, dateString)
         ]);
+        
+        // 여러 동의 데이터를 합산
+        let aggregatedData = null;
+        console.log('API 응답 데이터:', multiplePopulationChangeResponse);
+        
+        if (multiplePopulationChangeResponse && multiplePopulationChangeResponse.length > 0) {
+          console.log('개별 동 데이터:');
+          multiplePopulationChangeResponse.forEach((data, index) => {
+            console.log(`동 ${index + 1}:`, {
+              dongCode: data.adstrdCodeSe,
+              dongName: data.dongName,
+              currentTotalPopulation: data.currentTotalPopulation,
+              previousTotalPopulation: data.previousTotalPopulation,
+              totalPopulationChange: data.totalPopulationChange,
+              totalPopulationChangeRate: data.totalPopulationChangeRate
+            });
+          });
+          
+          const totalCurrentPopulation = multiplePopulationChangeResponse.reduce((sum, data) => {
+            const current = data.currentTotalPopulation || 0;
+            console.log(`동 ${data.dongName}: 현재 인구 ${current} 추가, 누적: ${sum + current}`);
+            return sum + current;
+          }, 0);
+          
+          const totalPreviousPopulation = multiplePopulationChangeResponse.reduce((sum, data) => {
+            const previous = data.previousTotalPopulation || 0;
+            console.log(`동 ${data.dongName}: 이전 인구 ${previous} 추가, 누적: ${sum + previous}`);
+            return sum + previous;
+          }, 0);
+          
+          const totalChange = totalCurrentPopulation - totalPreviousPopulation;
+          const totalChangeRate = totalPreviousPopulation > 0 ? 
+            (totalChange / totalPreviousPopulation) * 100 : 0;
+          
+          console.log('최종 합산 결과:', {
+            totalCurrentPopulation,
+            totalPreviousPopulation,
+            totalChange,
+            totalChangeRate,
+            dongCount: multiplePopulationChangeResponse.length
+          });
+          
+          aggregatedData = {
+            currentTotalPopulation: totalCurrentPopulation,
+            previousTotalPopulation: totalPreviousPopulation,
+            totalPopulationChange: totalChange,
+            totalPopulationChangeRate: totalChangeRate,
+            dongCount: multiplePopulationChangeResponse.length
+          };
+        } else {
+          console.log('API 응답이 비어있거나 null입니다.');
+        }
+        
         setHomeData(homeResponse);
         setHealthStatus(healthResponse);
+        setPopulationChangeData(aggregatedData);
       } catch (err) {
         console.error('백엔드 연결 실패:', err);
         // 백엔드 연결 실패 시 기본 데이터 설정
@@ -147,10 +225,15 @@ export default function Home() {
     window.location.href = '/health';
   };
 
-  const handleDetailedStats = () => {
-    console.log('상세 통계 페이지 버튼 클릭됨');
-    window.location.href = '/detailed-stats';
-  };
+     const handleDetailedStats = () => {
+     console.log('상세 통계 페이지 버튼 클릭됨');
+     window.location.href = '/detailed-stats';
+   };
+
+   const handleComparisonAnalysis = () => {
+     console.log('비교분석 페이지 버튼 클릭됨');
+     window.location.href = '/comparison-analysis';
+   };
 
   // 로그인 처리
   const handleLogin = async (e) => {
@@ -354,12 +437,18 @@ export default function Home() {
                 >
                   Regional Analysis
                 </button>
-                <button
-                  onClick={handleDetailedStats}
-                  className="text-sm text-gray-600 hover:text-black transition-colors"
-                >
-                  Analytics
-                </button>
+                                 <button
+                   onClick={handleDetailedStats}
+                   className="text-sm text-gray-600 hover:text-black transition-colors"
+                 >
+                   Analytics
+                 </button>
+                 <button
+                   onClick={handleComparisonAnalysis}
+                   className="text-sm text-gray-600 hover:text-black transition-colors"
+                 >
+                   비교분석
+                 </button>
               </nav>
 
               {/* 상태 표시 */}
@@ -468,8 +557,24 @@ export default function Home() {
                 </svg>
                 <span className="text-sm text-gray-600">Living population</span>
               </div>
-              <div className="text-2xl font-bold text-black">9.7M</div>
-              <div className="text-sm text-green-600 mt-1">+2.3% from last month</div>
+              <div className="text-2xl font-bold text-black">
+                {populationChangeData ? 
+                  `${(populationChangeData.currentTotalPopulation / 1000000).toFixed(1)}M` : 
+                  '9.7M'
+                }
+              </div>
+              <div className={`text-sm mt-1 ${
+                populationChangeData && populationChangeData.totalPopulationChangeRate > 0 
+                  ? 'text-green-600' 
+                  : populationChangeData && populationChangeData.totalPopulationChangeRate < 0 
+                  ? 'text-red-600' 
+                  : 'text-gray-600'
+              }`}>
+                {populationChangeData ? 
+                  `${populationChangeData.totalPopulationChangeRate > 0 ? '+' : ''}${populationChangeData.totalPopulationChangeRate.toFixed(1)}% from last month` : 
+                  '+2.3% from last month'
+                }
+              </div>
             </div>
 
             <div className="p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
@@ -501,8 +606,10 @@ export default function Home() {
                 </svg>
                 <span className="text-sm text-gray-600">Active districts</span>
               </div>
-              <div className="text-2xl font-bold text-black">25</div>
-              <div className="text-sm text-gray-600 mt-1">Seoul districts</div>
+              <div className="text-2xl font-bold text-black">
+                {populationChangeData ? populationChangeData.dongCount : gangnamDongCodes.length}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Gangnam districts</div>
             </div>
           </div>
         </div>

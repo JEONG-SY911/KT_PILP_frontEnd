@@ -65,8 +65,13 @@ class PopulationPredictor:
                 df_list = []
                 for item in data:
                     date_str = item.get('date', '')
-                    time_range = item.get('timeRange', '00:00-01:00')
-                    hour = int(time_range.split(':')[0]) if time_range else 0
+                    tmzon_pd_se = item.get('tmzonPdSe', '0')
+                    
+                    # tmzonPdSe를 사용하여 시간 추출 (1부터 시작하므로 0부터 시작하도록 조정)
+                    try:
+                        hour = int(tmzon_pd_se) - 1
+                    except ValueError:
+                        hour = 0  # 기본값
                     
                     # 날짜 + 시간 조합으로 정확한 타임스탬프 생성
                     try:
@@ -81,7 +86,7 @@ class PopulationPredictor:
                             'temp_foreigner': item.get('tempForeignerPopulation', 0),
                             'hour': hour,
                             'date': date_str,
-                            'time_range': time_range
+                            'tmzon_pd_se': tmzon_pd_se
                         })
                     except:
                         continue
@@ -213,6 +218,33 @@ class PopulationPredictor:
         
         print(f"🔮 Prophet으로 {target_date}의 시간대별 예측 중...")
         
+        # 시간대별 평균값 계산 (훈련 데이터에서)
+        hourly_stats = {}
+        if self.training_data is not None:
+            for hour in range(24):
+                hour_data = self.training_data[self.training_data['hour'] == hour]
+                if not hour_data.empty:
+                    hourly_stats[hour] = {
+                        'local_population': hour_data['local_population'].mean(),
+                        'long_foreigner': hour_data['long_foreigner'].mean(),
+                        'temp_foreigner': hour_data['temp_foreigner'].mean()
+                    }
+                else:
+                    # 해당 시간대 데이터가 없으면 전체 평균 사용
+                    hourly_stats[hour] = {
+                        'local_population': self.training_data['local_population'].mean(),
+                        'long_foreigner': self.training_data['long_foreigner'].mean(),
+                        'temp_foreigner': self.training_data['temp_foreigner'].mean()
+                    }
+        else:
+            # 훈련 데이터가 없으면 기본값 사용
+            for hour in range(24):
+                hourly_stats[hour] = {
+                    'local_population': 1000,
+                    'long_foreigner': 100,
+                    'temp_foreigner': 50
+                }
+        
         # 예측할 타임스탬프 생성
         predictions = []
         base_date = pd.to_datetime(target_date)
@@ -220,14 +252,21 @@ class PopulationPredictor:
         for hour in hours:
             target_timestamp = base_date + pd.Timedelta(hours=hour)
             
+            # 해당 시간대의 통계값 사용
+            hour_stats = hourly_stats.get(hour, {
+                'local_population': 1000,
+                'long_foreigner': 100,
+                'temp_foreigner': 50
+            })
+            
             # 단일 시점 예측을 위한 데이터프레임 생성
             future_single = pd.DataFrame({
                 'ds': [target_timestamp],
                 'hour': [hour],
                 'is_weekend': [1 if target_timestamp.weekday() >= 5 else 0],
-                'local_population': [self.training_data['local_population'].mean() if self.training_data is not None else 1000],
-                'long_foreigner': [self.training_data['long_foreigner'].mean() if self.training_data is not None else 100],
-                'temp_foreigner': [self.training_data['temp_foreigner'].mean() if self.training_data is not None else 50]
+                'local_population': [hour_stats['local_population']],
+                'long_foreigner': [hour_stats['long_foreigner']],
+                'temp_foreigner': [hour_stats['temp_foreigner']]
             })
             
             # 예측 실행
@@ -244,11 +283,61 @@ class PopulationPredictor:
                 'confidence_lower': max(0, int(lower_bound)),
                 'confidence_upper': int(upper_bound),
                 'day_of_week': target_timestamp.weekday(),
-                'is_weekend': target_timestamp.weekday() >= 5
+                'is_weekend': target_timestamp.weekday() >= 5,
+                'hour_stats': hour_stats  # 디버깅용
             })
         
         print(f"✅ Prophet 예측 완료: {len(predictions)}개 시간대")
         return predictions
+
+    def fetch_actual_data_for_comparison(self, dong_code: str, target_date: str) -> List[Dict]:
+        """비교를 위한 실제 데이터 가져오기"""
+        try:
+            # 6일 전 날짜 계산
+            target_dt = pd.to_datetime(target_date)
+            six_days_ago = target_dt - pd.Timedelta(days=6)
+            six_days_ago_str = six_days_ago.strftime('%Y%m%d')
+            
+            print(f"📡 {six_days_ago_str}의 실제 데이터 가져오기...")
+            
+            # 백엔드에서 데이터 가져오기
+            response = requests.get(f"{self.backend_url}/population/gangnam/dongs/{dong_code}/daily", timeout=30)
+            if response.status_code == 200:
+                data = response.json()
+                
+                if isinstance(data, dict) and 'dailyDataList' in data:
+                    data = data['dailyDataList']
+                
+                # 해당 날짜의 데이터만 필터링
+                actual_data = []
+                for item in data:
+                    if item.get('date') == six_days_ago_str:
+                        tmzon_pd_se = item.get('tmzonPdSe', '0')
+                        try:
+                            hour = int(tmzon_pd_se) - 1
+                        except ValueError:
+                            hour = 0
+                        
+                        actual_data.append({
+                            'hour': hour,
+                            'actual_population': item.get('totalPopulation', 0),
+                            'local_population': item.get('localPopulation', 0),
+                            'long_foreigner': item.get('longForeignerPopulation', 0),
+                            'temp_foreigner': item.get('tempForeignerPopulation', 0),
+                            'time_range': item.get('timeRange', ''),
+                            'time_zone': item.get('timeZone', '')
+                        })
+                
+                # 시간순으로 정렬
+                actual_data.sort(key=lambda x: x['hour'])
+                return actual_data
+            else:
+                print(f"⚠️ 실제 데이터 가져오기 실패: {response.status_code}")
+                return []
+                
+        except Exception as e:
+            print(f"❌ 실제 데이터 가져오기 오류: {e}")
+            return []
 
 # 전역 예측기 인스턴스
 predictor = PopulationPredictor()
@@ -454,6 +543,107 @@ async def predict_weekly_pattern(dong_code: str):
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"주간 패턴 예측 중 오류 발생: {str(e)}")
+
+@app.post("/predict/compare/{dong_code}")
+async def predict_with_comparison(dong_code: str, target_date: str = None):
+    """예측 결과와 실제 데이터(6일 전)를 비교하여 반환"""
+    try:
+        if not predictor.is_trained:
+            raise HTTPException(status_code=400, detail="모델이 훈련되지 않았습니다. 먼저 /train/{dong_code}를 호출하세요.")
+        
+        # 기본값: 오늘 날짜
+        if target_date is None:
+            target_date = datetime.now().strftime('%Y-%m-%d')
+        
+        print(f"🔮 동 코드 {dong_code}의 {target_date} 예측 + 실제 데이터 비교...")
+        
+        # Prophet으로 예측
+        predictions = predictor.predict_hourly_demand(target_date, list(range(24)))
+        
+        # 실제 데이터 가져오기 (6일 전)
+        actual_data = predictor.fetch_actual_data_for_comparison(dong_code, target_date)
+        
+        # 예측과 실제 데이터 결합
+        comparison_data = []
+        for pred in predictions:
+            hour = pred['hour']
+            actual = next((item for item in actual_data if item['hour'] == hour), None)
+            
+            comparison_item = {
+                'hour': hour,
+                'timestamp': pred['timestamp'],
+                'predicted_population': pred['predicted_population'],
+                'confidence_lower': pred['confidence_lower'],
+                'confidence_upper': pred['confidence_upper'],
+                'actual_population': actual['actual_population'] if actual else None,
+                'prediction_error': actual['actual_population'] - pred['predicted_population'] if actual else None,
+                'error_percentage': ((actual['actual_population'] - pred['predicted_population']) / actual['actual_population'] * 100) if actual and actual['actual_population'] > 0 else None,
+                'day_of_week': pred['day_of_week'],
+                'is_weekend': pred['is_weekend']
+            }
+            comparison_data.append(comparison_item)
+        
+        # 성능 지표 계산
+        if actual_data:
+            errors = [item['prediction_error'] for item in comparison_data if item['prediction_error'] is not None]
+            if errors:
+                mae = np.mean(np.abs(errors))
+                mape = np.mean([abs(item['error_percentage']) for item in comparison_data if item['error_percentage'] is not None])
+                rmse = np.sqrt(np.mean(np.array(errors) ** 2))
+            else:
+                mae = mape = rmse = 0
+        else:
+            mae = mape = rmse = 0
+        
+        # 요약 통계
+        if comparison_data:
+            peak_prediction = max(comparison_data, key=lambda x: x['predicted_population'])
+            min_prediction = min(comparison_data, key=lambda x: x['predicted_population'])
+            
+            if actual_data:
+                peak_actual = max(actual_data, key=lambda x: x['actual_population'])
+                min_actual = min(actual_data, key=lambda x: x['actual_population'])
+            else:
+                peak_actual = min_actual = None
+            
+            summary = {
+                "prediction": {
+                    "peak_hour": peak_prediction['hour'],
+                    "peak_population": peak_prediction['predicted_population'],
+                    "min_hour": min_prediction['hour'],
+                    "min_population": min_prediction['predicted_population'],
+                    "avg_population": int(np.mean([p['predicted_population'] for p in comparison_data]))
+                },
+                "actual": {
+                    "peak_hour": peak_actual['hour'] if peak_actual else None,
+                    "peak_population": peak_actual['actual_population'] if peak_actual else None,
+                    "min_hour": min_actual['hour'] if min_actual else None,
+                    "min_population": min_actual['actual_population'] if min_actual else None,
+                    "avg_population": int(np.mean([a['actual_population'] for a in actual_data])) if actual_data else None
+                },
+                "performance": {
+                    "mae": float(mae),
+                    "mape": float(mape),
+                    "rmse": float(rmse),
+                    "data_points": len(actual_data)
+                }
+            }
+        else:
+            summary = {}
+        
+        return {
+            "dong_code": dong_code,
+            "prediction_date": target_date,
+            "actual_date": (pd.to_datetime(target_date) - pd.Timedelta(days=6)).strftime('%Y%m%d'),
+            "model_type": "Prophet",
+            "comparison_data": comparison_data,
+            "summary": summary,
+            "has_actual_data": len(actual_data) > 0
+        }
+    
+    except Exception as e:
+        print(f"❌ 예측 비교 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"예측 비교 중 오류 발생: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
