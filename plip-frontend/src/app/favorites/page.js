@@ -34,6 +34,10 @@ export default function FavoritesPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [deleteMessage, setDeleteMessage] = useState('');
 
+  // 상태 추가 (파일 상단에)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteAccountLoading, setDeleteAccountLoading] = useState(false);
+
 
 
 
@@ -137,6 +141,38 @@ export default function FavoritesPage() {
       console.error('즐겨찾기 삭제 실패:', error);
       setDeleteMessage('즐겨찾기 삭제에 실패했습니다.');
       setTimeout(() => setDeleteMessage(''), 3000);
+    }
+  };
+
+  // 회원 삭제 관련 함수들 추가
+  const handleDeleteAccountClick = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteConfirm(false);
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      setDeleteAccountLoading(true);
+      
+      await apiClient.deleteAccount();
+      
+      // 로컬 스토리지 정리
+      localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('userInfo');
+      
+      // 성공 메시지 표시 후 홈으로 이동
+      alert('회원 탈퇴가 완료되었습니다.');
+      window.location.href = '/';
+      
+    } catch (error) {
+      console.error('회원 삭제 실패:', error);
+      alert('회원 탈퇴에 실패했습니다: ' + (error.message || '알 수 없는 오류'));
+    } finally {
+      setDeleteAccountLoading(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -482,7 +518,10 @@ export default function FavoritesPage() {
                       <h4 className="font-medium text-gray-900">계정 삭제</h4>
                       <p className="text-sm text-gray-500">계정을 영구적으로 삭제합니다. 이 작업은 되돌릴 수 없습니다.</p>
                     </div>
-                    <button className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    <button 
+                      onClick={handleDeleteAccountClick}
+                      className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    >
                       삭제하기
                     </button>
                   </div>
@@ -524,6 +563,47 @@ export default function FavoritesPage() {
           </div>
         </div>
       </footer>
+
+      {/* 회원 삭제 확인 팝업 */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="text-center">
+              <div className="text-red-500 text-4xl mb-4">⚠️</div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                정말로 탈퇴하시겠습니까?
+              </h3>
+              <p className="text-gray-600 text-sm mb-6">
+                이 작업은 되돌릴 수 없으며, 모든 데이터가 영구적으로 삭제됩니다.
+              </p>
+              
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={handleDeleteCancel}
+                  disabled={deleteAccountLoading}
+                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 disabled:opacity-50 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={deleteAccountLoading}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                >
+                  {deleteAccountLoading ? (
+                    <div className="flex items-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      삭제 중...
+                    </div>
+                  ) : (
+                    '탈퇴하기'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

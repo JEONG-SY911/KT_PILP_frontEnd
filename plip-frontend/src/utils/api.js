@@ -130,9 +130,16 @@ export const apiClient = {
 
   // 프로필 업데이트
   async updateProfile(profileData) {
-    return this.request('/auth/profile', {
+    return this.request('/api/users/me/profile', {  // ✅ 수정된 엔드포인트
       method: 'PUT',
       body: JSON.stringify(profileData),
+    });
+  },
+
+  // 회원 삭제
+  async deleteAccount() {
+    return this.request('/api/users/me/profile', {
+      method: 'DELETE',
     });
   },
 
